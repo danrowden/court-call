@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const USER_TZ = "Europe/Helsinki";
+const USER_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
+const USER_TZ_SHORT = USER_TZ.split("/").pop().replace(/_/g, " ");
 const HOST = "tennisapi1.p.rapidapi.com";
 
 const DEMO_EVENTS = [
@@ -223,7 +224,7 @@ function MatchCard({ event, favouriteIds }) {
             </div>
           ) : (
             <div>
-              <div style={{ fontSize: "10px", color: "#444", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "2px" }}>Helsinki</div>
+              <div style={{ fontSize: "10px", color: "#444", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "2px" }}>{USER_TZ_SHORT}</div>
               <div style={{ fontSize: "22px", fontWeight: 800, color: "#f5c842", fontFamily: "'DM Mono', monospace", letterSpacing: "-0.02em", lineHeight: 1 }}>{helsinkiTime}</div>
               {showVenue && <div style={{ fontSize: "11px", color: "#444", fontFamily: "'DM Mono', monospace", marginTop: "2px" }}>{venueTime} local</div>}
             </div>
@@ -476,7 +477,7 @@ export default function CourtCall() {
             </h1>
             <p style={{ margin: "3px 0 0", fontSize: "11px", color: "#2e2e2e" }}>
               {isDemo ? "Demo · " : lastFetched ? `Updated ${lastFetched.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · ` : ""}
-              Helsinki time · {favourites.length} player{favourites.length !== 1 ? "s" : ""} tracked
+              {USER_TZ_SHORT} time · {favourites.length} player{favourites.length !== 1 ? "s" : ""} tracked
             </p>
           </div>
           <div style={{ display: "flex", gap: "7px" }}>
@@ -607,7 +608,7 @@ export default function CourtCall() {
         )}
 
         <div style={{ textAlign: "center", marginTop: "36px", color: "#181818", fontSize: "11px" }}>
-          Times in Helsinki (EET/EEST) · Data via TennisApi on RapidAPI
+          Times in {USER_TZ_SHORT} · Data via TennisApi on RapidAPI
         </div>
       </div>
     </div>

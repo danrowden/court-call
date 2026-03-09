@@ -385,7 +385,7 @@ export default function CourtCall() {
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "18px" }}>
           <div>
             <h1 style={{ margin: 0, fontSize: "24px", fontWeight: 800, letterSpacing: "-0.03em", background: "linear-gradient(90deg,#f5c842,#e07b00)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-              🎾 Court Call
+              🎾 Baseline
             </h1>
             <p style={{ margin: "3px 0 0", fontSize: "11px", color: "#2e2e2e" }}>
               {lastFetched ? `Cached ${lastFetched.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · ` : ""}

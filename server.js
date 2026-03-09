@@ -264,7 +264,7 @@ async function start() {
   }
 
   app.listen(PORT, () => {
-    console.log(`Court Call running on port ${PORT}`)
+    console.log(`Baseline running on port ${PORT}`)
   })
 }
 

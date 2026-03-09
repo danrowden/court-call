@@ -3,60 +3,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 // ─── Constants ────────────────────────────────────────────────────────────────
 const USER_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const USER_TZ_SHORT = USER_TZ.split("/").pop().replace(/_/g, " ");
-const HOST = "tennisapi1.p.rapidapi.com";
-
-const DEMO_EVENTS = [
-  {
-    id: 15624970,
-    startTimestamp: Date.now() / 1000 + 3600 * 4,
-    homeTeam: { id: 299999, name: "Carlos Alcaraz", shortName: "C. Alcaraz", country: { name: "Spain" } },
-    awayTeam: { id: 57163, name: "Alexander Zverev", shortName: "A. Zverev", country: { name: "Germany" } },
-    tournament: { name: "Indian Wells, USA", category: { name: "ATP" }, uniqueTournament: { tennisPoints: 1000 } },
-    season: { name: "ATP Indian Wells, USA Men Singles 2026" },
-    roundInfo: { round: 7, name: "Quarterfinals" },
-    status: { code: 0, type: "notstarted", description: "Not started" },
-    groundType: "Hardcourt outdoor",
-    homeScore: {}, awayScore: {},
-  },
-  {
-    id: 15624971,
-    startTimestamp: Date.now() / 1000 + 3600 * 28,
-    homeTeam: { id: 399999, name: "Jannik Sinner", shortName: "J. Sinner", country: { name: "Italy" } },
-    awayTeam: { id: 100002, name: "Novak Djokovic", shortName: "N. Djokovic", country: { name: "Serbia" } },
-    tournament: { name: "Indian Wells, USA", category: { name: "ATP" }, uniqueTournament: { tennisPoints: 1000 } },
-    season: { name: "ATP Indian Wells, USA Men Singles 2026" },
-    roundInfo: { round: 7, name: "Semifinals" },
-    status: { code: 0, type: "notstarted", description: "Not started" },
-    groundType: "Hardcourt outdoor",
-    homeScore: {}, awayScore: {},
-  },
-  {
-    id: 15624966,
-    startTimestamp: Date.now() / 1000 - 3600 * 3,
-    homeTeam: { id: 235576, name: "Brandon Nakashima", shortName: "B. Nakashima", country: { name: "USA" } },
-    awayTeam: { id: 57163, name: "Alexander Zverev", shortName: "A. Zverev", country: { name: "Germany" } },
-    tournament: { name: "Indian Wells, USA", category: { name: "ATP" }, uniqueTournament: { tennisPoints: 1000 } },
-    season: { name: "ATP Indian Wells, USA Men Singles 2026" },
-    roundInfo: { round: 6, name: "Round of 32" },
-    status: { code: 100, type: "finished", description: "Ended" },
-    winnerCode: 2,
-    groundType: "Hardcourt outdoor",
-    homeScore: { period1: 6, period2: 7, period3: 4, period1TieBreak: 2 },
-    awayScore: { period1: 7, period2: 5, period3: 6, period1TieBreak: 7 },
-  },
-  {
-    id: 15624972,
-    startTimestamp: Date.now() / 1000 + 3600 * 6,
-    homeTeam: { id: 499999, name: "Iga Swiatek", shortName: "I. Swiatek", country: { name: "Poland" } },
-    awayTeam: { id: 599999, name: "Aryna Sabalenka", shortName: "A. Sabalenka", country: { name: "Belarus" } },
-    tournament: { name: "Indian Wells, USA", category: { name: "WTA" }, uniqueTournament: { tennisPoints: 1000 } },
-    season: { name: "WTA Indian Wells, USA Women Singles 2026" },
-    roundInfo: { round: 7, name: "Semifinals" },
-    status: { code: 0, type: "notstarted", description: "Not started" },
-    groundType: "Hardcourt outdoor",
-    homeScore: {}, awayScore: {},
-  },
-];
 
 const SURFACE_EMOJI = {
   "hardcourt outdoor": "🔵", "hardcourt indoor": "🔵",
@@ -122,7 +68,6 @@ function getVenueTz(tournamentName) {
 }
 
 // ─── Score display ────────────────────────────────────────────────────────────
-// Formats e.g. "7(7)-6(2)  6-3" with tiebreak superscript notation
 function formatScore(event) {
   const h = event.homeScore;
   const a = event.awayScore;
@@ -133,7 +78,6 @@ function formatScore(event) {
   return played.map(s => {
     const hg = h[s], ag = a[s];
     const tbKey = `${s}TieBreak`;
-    // Show tiebreak score for the loser of the set (the lower score)
     if (h[tbKey] != null || a[tbKey] != null) {
       const tb = h[tbKey] ?? a[tbKey];
       const loserIsHome = hg < ag;
@@ -167,10 +111,10 @@ function MatchCard({ event, favouriteIds }) {
   const p2Fav = favouriteIds.includes(event.awayTeam?.id);
   const isFav = p1Fav || p2Fav;
 
-  const helsinkiTime = tsToLocalTime(event.startTimestamp, USER_TZ);
+  const localTime = tsToLocalTime(event.startTimestamp, USER_TZ);
   const venueTz = getVenueTz(event.tournament?.name);
   const venueTime = venueTz ? tsToLocalTime(event.startTimestamp, venueTz) : null;
-  const showVenue = venueTime && venueTime !== helsinkiTime;
+  const showVenue = venueTime && venueTime !== localTime;
 
   const score = formatScore(event);
   const ground = event.groundType || event.tournament?.uniqueTournament?.groundType;
@@ -225,7 +169,7 @@ function MatchCard({ event, favouriteIds }) {
           ) : (
             <div>
               <div style={{ fontSize: "10px", color: "#444", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "2px" }}>{USER_TZ_SHORT}</div>
-              <div style={{ fontSize: "22px", fontWeight: 800, color: "#f5c842", fontFamily: "'DM Mono', monospace", letterSpacing: "-0.02em", lineHeight: 1 }}>{helsinkiTime}</div>
+              <div style={{ fontSize: "22px", fontWeight: 800, color: "#f5c842", fontFamily: "'DM Mono', monospace", letterSpacing: "-0.02em", lineHeight: 1 }}>{localTime}</div>
               {showVenue && <div style={{ fontSize: "11px", color: "#444", fontFamily: "'DM Mono', monospace", marginTop: "2px" }}>{venueTime} local</div>}
             </div>
           )}
@@ -245,49 +189,55 @@ function MatchCard({ event, favouriteIds }) {
 }
 
 // ─── Player Search ────────────────────────────────────────────────────────────
-function PlayerSearch({ apiKey, onAdd, existingIds }) {
+function PlayerSearch({ onAdd, existingIds }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [searching, setSearching] = useState(false);
   const [searchErr, setSearchErr] = useState("");
+  const [knownPlayers, setKnownPlayers] = useState([]);
   const debounceRef = useRef(null);
+
+  // Load known players from server cache on mount
+  useEffect(() => {
+    fetch("/api/players")
+      .then(r => r.json())
+      .then(data => setKnownPlayers(data.players || []))
+      .catch(() => {});
+  }, []);
 
   const search = useCallback(async (q) => {
     if (!q.trim() || q.length < 2) { setResults([]); return; }
-    if (!apiKey) { setSearchErr("Save your API key first"); return; }
     setSearching(true); setSearchErr("");
+
+    // First: check local cache
+    const lower = q.toLowerCase();
+    const localMatches = knownPlayers.filter(p =>
+      (p.name && p.name.toLowerCase().includes(lower)) ||
+      (p.shortName && p.shortName.toLowerCase().includes(lower))
+    ).slice(0, 6);
+
+    if (localMatches.length > 0) {
+      setResults(localMatches);
+      setSearching(false);
+      return;
+    }
+
+    // Fallback: server proxy to RapidAPI search
     try {
-      const res = await fetch(
-        `https://tennisapi1.p.rapidapi.com/api/tennis/search/${encodeURIComponent(q)}`,
-        { headers: { "x-rapidapi-host": HOST, "x-rapidapi-key": apiKey } }
-      );
+      const res = await fetch(`/api/players/search?q=${encodeURIComponent(q)}`);
       const data = await res.json();
-      // Filter to player results only (type === "player" or sport === "tennis")
-      const players = (data.results || []).filter(r =>
-        r.type === "player" || r.entity?.type === "player"
-      ).slice(0, 6);
+      const players = (data.results || []).slice(0, 6);
       setResults(players);
       if (!players.length) setSearchErr("No players found");
     } catch { setSearchErr("Search failed"); }
     setSearching(false);
-  }, [apiKey]);
+  }, [knownPlayers]);
 
   const handleChange = (val) => {
     setQuery(val);
     setResults([]); setSearchErr("");
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => search(val), 400);
-  };
-
-  const getPlayerInfo = (r) => {
-    // Results can be wrapped differently
-    const entity = r.entity || r;
-    return {
-      id: entity.id,
-      name: entity.name || entity.shortName,
-      shortName: entity.shortName || entity.name,
-      country: entity.country?.name || "",
-    };
   };
 
   return (
@@ -310,8 +260,7 @@ function PlayerSearch({ apiKey, onAdd, existingIds }) {
 
       {results.length > 0 && (
         <div style={{ background: "#0e0e0e", border: "1px solid #222", borderRadius: "7px", marginTop: "4px", overflow: "hidden" }}>
-          {results.map((r, i) => {
-            const p = getPlayerInfo(r);
+          {results.map((p, i) => {
             const already = existingIds.includes(p.id);
             return (
               <div key={p.id || i}
@@ -341,7 +290,6 @@ function PlayerSearch({ apiKey, onAdd, existingIds }) {
 
 // ─── localStorage helpers ─────────────────────────────────────────────────────
 const LS_KEY_FAV = "courtcall_favourites";
-const LS_KEY_API = "courtcall_apikey";
 
 const DEFAULT_FAVOURITES = [
   { id: 235576, name: "Brandon Nakashima", shortName: "B. Nakashima" },
@@ -358,20 +306,12 @@ function loadFavourites() {
   return DEFAULT_FAVOURITES;
 }
 
-function loadApiKey() {
-  try { return localStorage.getItem(LS_KEY_API) || ""; } catch { return ""; }
-}
-
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function CourtCall() {
-  const [apiKey, setApiKey] = useState(() => loadApiKey());
-  const [savedKey, setSavedKey] = useState(() => loadApiKey());
-  // favourites: array of { id, name, shortName }
   const [favourites, setFavourites] = useState(() => loadFavourites());
   const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [isDemo, setIsDemo] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [showAll, setShowAll] = useState(false);
   const [lastFetched, setLastFetched] = useState(null);
@@ -384,7 +324,7 @@ export default function CourtCall() {
   const favouriteIds = favourites.map(f => f.id);
 
   const filterEvents = useCallback((all) => {
-    const nowTs = Date.now() / 1000 - 7200; // include matches started in last 2h (might be live)
+    const nowTs = Date.now() / 1000 - 7200;
     return all.filter(e => {
       if (!e.startTimestamp || e.startTimestamp < nowTs) return false;
       if (!favouriteIds.length) return true;
@@ -392,56 +332,28 @@ export default function CourtCall() {
     });
   }, [favouriteIds]);
 
-  const fetchCalendar = useCallback(async (key) => {
-    if (!key) { setEvents(filterEvents(DEMO_EVENTS)); setIsDemo(true); return; }
+  const fetchEvents = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const now = new Date();
-      const month = now.getMonth() + 1;
-      const year = now.getFullYear();
-
-      const fetchMonth = (m, y) =>
-        fetch(`https://tennisapi1.p.rapidapi.com/api/tennis/calendar/${m}/${y}`,
-          { headers: { "x-rapidapi-host": HOST, "x-rapidapi-key": key } }
-        ).then(r => r.json());
-
-      const thisMonth = await fetchMonth(month, year);
-
-      if (thisMonth.message || (!thisMonth.events && !Array.isArray(thisMonth))) {
-        throw new Error(thisMonth.message || "Unexpected response");
+      const res = await fetch("/api/events");
+      const data = await res.json();
+      setEvents(data.events || []);
+      setLastFetched(data.cachedAt ? new Date(data.cachedAt) : new Date());
+      if (!data.events?.length) {
+        setError("No events cached yet. The server may still be fetching data.");
       }
-
-      let all = thisMonth.events || thisMonth || [];
-
-      // If last 7 days of month, grab next month too
-      const daysInMonth = new Date(year, month, 0).getDate();
-      if (now.getDate() >= daysInMonth - 6) {
-        const nm = month === 12 ? 1 : month + 1;
-        const ny = month === 12 ? year + 1 : year;
-        const next = await fetchMonth(nm, ny);
-        all = [...all, ...(next.events || next || [])];
-      }
-
-      const filtered = filterEvents(all);
-      setEvents(filtered);
-      setIsDemo(false);
-      setLastFetched(new Date());
-      if (filtered.length === 0) setError("No upcoming matches found for your favourites this month.");
-    } catch (e) {
-      setError(e.message || "Fetch failed — check your RapidAPI key.");
-      setEvents(filterEvents(DEMO_EVENTS));
-      setIsDemo(true);
+    } catch {
+      setError("Could not load events from server.");
     }
     setLoading(false);
-  }, [filterEvents]);
+  }, []);
 
-  useEffect(() => {
-    if (savedKey) fetchCalendar(savedKey);
-    else setEvents(filterEvents(DEMO_EVENTS));
-  }, [savedKey, favouriteIds.join(",")]);
+  useEffect(() => { fetchEvents(); }, []);
 
-  // Group by Helsinki date
-  const grouped = events.reduce((acc, e) => {
+  // Filter events by favourites in render path (reactive to favourite changes)
+  const filteredEvents = filterEvents(events);
+
+  const grouped = filteredEvents.reduce((acc, e) => {
     const d = tsToDateKey(e.startTimestamp);
     if (!acc[d]) acc[d] = [];
     acc[d].push(e);
@@ -476,17 +388,15 @@ export default function CourtCall() {
               🎾 Court Call
             </h1>
             <p style={{ margin: "3px 0 0", fontSize: "11px", color: "#2e2e2e" }}>
-              {isDemo ? "Demo · " : lastFetched ? `Updated ${lastFetched.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · ` : ""}
+              {lastFetched ? `Cached ${lastFetched.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · ` : ""}
               {USER_TZ_SHORT} time · {favourites.length} player{favourites.length !== 1 ? "s" : ""} tracked
             </p>
           </div>
           <div style={{ display: "flex", gap: "7px" }}>
-            {savedKey && (
-              <button onClick={() => fetchCalendar(savedKey)} disabled={loading} title="Refresh"
-                style={{ background: "none", border: "1px solid #1c1c1c", borderRadius: "7px", color: "#3a3a3a", padding: "6px 10px", fontSize: "14px" }}>
-                🔄
-              </button>
-            )}
+            <button onClick={fetchEvents} disabled={loading} title="Refresh"
+              style={{ background: "none", border: "1px solid #1c1c1c", borderRadius: "7px", color: "#3a3a3a", padding: "6px 10px", fontSize: "14px" }}>
+              🔄
+            </button>
             <button onClick={() => setShowSettings(s => !s)}
               style={{ background: showSettings ? "#161600" : "none", border: `1px solid ${showSettings ? "#332800" : "#1c1c1c"}`, borderRadius: "7px", color: showSettings ? "#f5c842" : "#3a3a3a", padding: "6px 12px", fontSize: "13px" }}>
               ⚙️ Settings
@@ -494,35 +404,9 @@ export default function CourtCall() {
           </div>
         </div>
 
-        {/* Demo banner */}
-        {isDemo && (
-          <div style={{ padding: "9px 13px", background: "#111000", border: "1px solid #252000", borderRadius: "8px", fontSize: "12px", color: "#7a5a00", marginBottom: "14px" }}>
-            ⚡ Demo data — paste your RapidAPI key in Settings to go live
-          </div>
-        )}
-
         {/* Settings */}
         {showSettings && (
           <div style={{ background: "#0f0f0f", border: "1px solid #1c1c1c", borderRadius: "10px", padding: "18px", marginBottom: "16px" }}>
-
-            {/* API Key */}
-            <div style={{ marginBottom: "20px" }}>
-              <div style={{ fontSize: "11px", fontWeight: 600, color: "#444", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "5px" }}>RapidAPI Key</div>
-              <div style={{ fontSize: "11px", color: "#2a2a2a", marginBottom: "8px" }}>
-                Free: 50 req/day · $9/mo: 15k/day ·{" "}
-                <a href="https://rapidapi.com/fluis.lacasse/api/tennisapi1" target="_blank" rel="noreferrer" style={{ color: "#f5c842" }}>tennisapi1 on RapidAPI</a>
-              </div>
-              <div style={{ display: "flex", gap: "8px" }}>
-                <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)}
-                  onKeyDown={e => e.key === "Enter" && setSavedKey(apiKey)}
-                  placeholder="x-rapidapi-key..."
-                  style={{ flex: 1, background: "#080808", border: "1px solid #1e1e1e", borderRadius: "7px", padding: "9px 12px", color: "#e0e0e0", fontSize: "13px" }} />
-                <button onClick={() => { setSavedKey(apiKey); setShowSettings(false); try { localStorage.setItem(LS_KEY_API, apiKey); } catch {} }}
-                  style={{ background: "#f5c842", color: "#000", border: "none", borderRadius: "7px", padding: "9px 16px", fontWeight: 700, fontSize: "13px" }}>
-                  Save
-                </button>
-              </div>
-            </div>
 
             {/* Tracked Players */}
             <div style={{ marginBottom: "16px" }}>
@@ -548,13 +432,9 @@ export default function CourtCall() {
             <div>
               <div style={{ fontSize: "11px", fontWeight: 600, color: "#444", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "7px" }}>Add Player</div>
               <PlayerSearch
-                apiKey={savedKey || apiKey}
                 existingIds={favouriteIds}
                 onAdd={player => setFavourites(fvs => [...fvs, player])}
               />
-              {!savedKey && (
-                <div style={{ fontSize: "11px", color: "#2a2a2a", marginTop: "6px" }}>Save your API key above to enable player search</div>
-              )}
             </div>
           </div>
         )}

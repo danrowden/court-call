@@ -1,0 +1,17 @@
+{
+  "name": "Baseline",
+  "short_name": "Baseline",
+  "description": "Track your favourite tennis players' upcoming matches",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0c0c0c",
+  "theme_color": "#0c0c0c",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

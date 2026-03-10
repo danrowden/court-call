@@ -138,9 +138,9 @@ async function fetchCalendar() {
     const now = new Date()
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
-    // Today + next 7 days (8 days total)
+    // Today + next 5 days (6 days total)
     let all = []
-    for (let i = 0; i <= 7; i++) {
+    for (let i = 0; i <= 5; i++) {
       const d = new Date(start)
       d.setDate(start.getDate() + i)
       const result = await fetchEventsForDate(d)
@@ -273,7 +273,7 @@ app.get('/api/players', async (req, res) => {
   }
 })
 
-// Proxy player search to RapidAPI (fallback when not in local cache)
+// Player search (local DB only; no upstream calls)
 app.get('/api/players/search', async (req, res) => {
   const rawQ = req.query.q
   const q = Array.isArray(rawQ)
@@ -286,7 +286,7 @@ app.get('/api/players/search', async (req, res) => {
   const lowerQ = q.toLowerCase()
 
   try {
-    // Always search local cache first
+    // Search local cache only
     const { rows: localRows } = await pool.query(
       `
         SELECT id, name, short_name AS "shortName", country
@@ -297,95 +297,10 @@ app.get('/api/players/search', async (req, res) => {
       `,
       [`%${lowerQ}%`]
     )
-
-    // If we already have enough local matches (or RapidAPI not configured), return them.
-    if (localRows.length >= 6 || !RAPIDAPI_KEY) {
-      return res.json({ results: localRows })
-    }
-
-    const apiRes = await fetch(
-      `https://${HOST}/api/tennis/search/${encodeURIComponent(q)}`,
-      { headers: { 'x-rapidapi-host': HOST, 'x-rapidapi-key': RAPIDAPI_KEY } }
-    )
-    let data = null
-    try {
-      data = await apiRes.json()
-    } catch {
-      data = null
-    }
-
-    if (!apiRes.ok) {
-      const message = data?.message || data?.error || `HTTP ${apiRes.status}`
-      // If upstream is rate-limited (or otherwise failing), fall back to local matches.
-      if (apiRes.status === 429) {
-        return res.json({ results: localRows, warning: message })
-      }
-      // For other upstream failures, still prefer returning local data if we have any.
-      if (localRows.length > 0) {
-        return res.json({ results: localRows, warning: message })
-      }
-      return res.status(apiRes.status).json({ error: message })
-    }
-
-    if (data?.message) {
-      if (localRows.length > 0) {
-        return res.json({ results: localRows, warning: data.message })
-      }
-      return res.status(502).json({ error: data.message })
-    }
-
-    const players = (data.results || [])
-      .filter(r => r.type === 'player' || r.entity?.type === 'player')
-      .slice(0, 6)
-      .map(r => {
-        const entity = r.entity || r
-        return {
-          id: entity.id,
-          name: entity.name || entity.shortName,
-          shortName: entity.shortName || entity.name,
-          country: entity.country?.name || '',
-        }
-      })
-
-    // Upsert newly discovered players
-    for (const p of players) {
-      if (!p.id) continue
-      await pool.query(`
-        INSERT INTO players (id, name, short_name, country, seen_at)
-        VALUES ($1, $2, $3, $4, EXTRACT(EPOCH FROM NOW())::INTEGER)
-        ON CONFLICT (id) DO UPDATE SET
-          name=$2, short_name=$3, country=$4, seen_at=EXTRACT(EPOCH FROM NOW())::INTEGER
-      `, [p.id, p.name, p.shortName || null, p.country || null])
-    }
-
-    // Merge local + remote (prefer local ordering first, then remote uniques)
-    const seen = new Set(localRows.map(p => p.id))
-    const merged = [...localRows]
-    for (const p of players) {
-      if (!p?.id || seen.has(p.id)) continue
-      merged.push(p)
-      if (merged.length >= 6) break
-    }
-
-    res.json({ results: merged.slice(0, 6) })
+    return res.json({ results: localRows })
   } catch (err) {
     console.error('Player search error:', err)
-    // If something unexpected happens, still try to return local matches if possible.
-    try {
-      const { rows } = await pool.query(
-        `
-          SELECT id, name, short_name AS "shortName", country
-          FROM players
-          WHERE LOWER(name) LIKE $1 OR LOWER(COALESCE(short_name, '')) LIKE $1
-          ORDER BY seen_at DESC, name ASC
-          LIMIT 6
-        `,
-        [`%${lowerQ}%`]
-      )
-      return res.json({ results: rows, warning: 'Search failed upstream; returned local matches' })
-    } catch {
-      res.status(500).json({ error: 'Search failed' })
-    }
+    res.status(500).json({ error: 'Search failed' })
   }
 })
 

@@ -19,11 +19,11 @@ This app shows upcoming tennis matches for a set of tracked players. It **does n
 The server uses RapidAPI’s TennisAPI host `tennisapi1.p.rapidapi.com` and the env var `RAPIDAPI_KEY`.
 
 - **Calendar endpoint** (server-side only): `GET https://tennisapi1.p.rapidapi.com/api/tennis/events/{day}/{month}/{year}`
-- **Search endpoint** (server-side only): `GET https://tennisapi1.p.rapidapi.com/api/tennis/search/{query}`
+- **Search endpoint**: not used (player search is local DB-only)
 
 ### Periodic refresh (server-side cache warmer)
 
-On startup (and then every 30 minutes), `server.js` fetches **today + next 7 days** of events and **upserts** them into Postgres.
+On startup (and then every 30 minutes), `server.js` fetches **today + next 5 days** of events and **upserts** them into Postgres.
 
 - **Schedule**: every 30 minutes (`FETCH_INTERVAL`)
 - **Range**: today through +7 days (8 days total)
@@ -57,9 +57,7 @@ It creates two tables:
 
 - **`GET /api/players/search?q=...`**
   - Searches Postgres first (fast, no upstream quota)
-  - If fewer than 6 local matches and `RAPIDAPI_KEY` is set, calls RapidAPI search as a fallback
-  - Upserts any newly discovered players into the `players` table
-  - If RapidAPI is rate-limited/unavailable, it falls back to local results where possible
+  - Does not call RapidAPI (local DB-only)
 
 ---
 

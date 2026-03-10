@@ -339,7 +339,7 @@ app.get('/api/players/search', async (req, res) => {
     }
 
     const players = (data.results || [])
-      .filter(r => r.type === 'player' || r.entity?.type === 'player')
+      // .filter(r => r.type === 'player' || r.entity?.type === 'player')
       .slice(0, 6)
       .map(r => {
         const entity = r.entity || r

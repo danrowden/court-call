@@ -320,23 +320,21 @@ function clearAuthCookie(res) {
 
 app.use(express.json())
 
-// Simple email + password login (temporary dev auth)
+// Simple email-only login (temporary dev auth)
 app.post('/api/auth/login', async (req, res) => {
   if (!AUTH_ENABLED) return res.status(501).json({ error: 'Auth not configured' })
 
   const email = (req.body.email || '').trim().toLowerCase()
-  const password = req.body.password || ''
 
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' })
+  if (!email) {
+    return res.status(400).json({ error: 'Email is required' })
   }
 
-  // Temporary hard-coded credentials for local login
+  // Temporary hard-coded email for local login
   const DEV_EMAIL = 'rowden.dan@gmail.com'
-  const DEV_PASSWORD = 'tennis1234'
 
-  if (email !== DEV_EMAIL || password !== DEV_PASSWORD) {
-    return res.status(401).json({ error: 'Invalid email or password' })
+  if (email !== DEV_EMAIL) {
+    return res.status(401).json({ error: 'Invalid email' })
   }
 
   try {

@@ -3,6 +3,8 @@ import {
   AlertTriangle,
   Check,
   Circle,
+  LogOut,
+  Mail,
   RefreshCw,
   Settings,
   Star,
@@ -350,6 +352,17 @@ function loadFavourites() {
   return DEFAULT_FAVOURITES;
 }
 
+// ─── Auth helpers ─────────────────────────────────────────────────────────────
+
+function mergeFavourites(local, remote) {
+  const seen = new Set();
+  const merged = [];
+  for (const f of [...remote, ...local]) {
+    if (!seen.has(f.id)) { seen.add(f.id); merged.push(f); }
+  }
+  return merged;
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function CourtCall() {
   const [favourites, setFavourites] = useState(() => loadFavourites());
@@ -360,12 +373,52 @@ export default function CourtCall() {
   const [showAll, setShowAll] = useState(false);
   const [lastFetched, setLastFetched] = useState(null);
 
+  // Auth state
+  const [user, setUser] = useState(null);         // { email, favourites } or null
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authMsg, setAuthMsg] = useState("");       // "Check your email" etc.
+  const [authEmail, setAuthEmail] = useState("");
+  const authChecked = useRef(false);
+
+  // Check auth on mount (non-blocking)
+  useEffect(() => {
+    if (authChecked.current) return;
+    authChecked.current = true;
+    fetch("/api/auth/me", { credentials: "same-origin" })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data) return;
+        setUser(data);
+        // Merge server favourites with localStorage
+        const local = loadFavourites();
+        const merged = mergeFavourites(local, data.favourites || []);
+        setFavourites(merged);
+        // Push merged set back to server
+        fetch("/api/favourites", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({ favourites: merged }),
+        }).catch(() => {});
+      })
+      .catch(() => {});
+  }, []);
+
   // Persist favourites whenever they change
   useEffect(() => {
     try {
       const payload = { v: LS_FAV_VERSION, favourites };
       localStorage.setItem(LS_KEY_FAV, JSON.stringify(payload));
     } catch {}
+    // Sync to server if logged in
+    if (user) {
+      fetch("/api/favourites", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ favourites }),
+      }).catch(() => {});
+    }
   }, [favourites]);
 
   const favouriteIds = favourites.map(f => f.id);
@@ -484,6 +537,83 @@ export default function CourtCall() {
                 existingIds={favouriteIds}
                 onAdd={player => setFavourites(fvs => [...fvs, player])}
               />
+            </div>
+
+            {/* Sync */}
+            <div className="mt-4 pt-4 border-t border-border">
+              <div className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">
+                Sync across devices
+              </div>
+              {user ? (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-[13px]">
+                    <Check size={14} className="text-win" />
+                    <span className="text-text-muted">{user.email}</span>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" }).catch(() => {});
+                      setUser(null);
+                      setAuthMsg("");
+                    }}
+                    className="flex items-center gap-1.5 text-[13px] text-text-muted border border-border rounded-[5px] px-2.5 py-1">
+                    <LogOut size={13} aria-hidden="true" />
+                    <span>Log out</span>
+                  </button>
+                </div>
+              ) : authMsg ? (
+                <div className="flex items-center gap-2 text-[13px] text-text-muted">
+                  <Mail size={14} />
+                  <span>{authMsg}</span>
+                </div>
+              ) : (
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const email = authEmail.trim().toLowerCase();
+                    if (!email) return;
+                    setAuthLoading(true);
+                    setAuthMsg("");
+                    try {
+                      const res = await fetch("/api/auth/login", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        credentials: "same-origin",
+                        body: JSON.stringify({ email }),
+                      });
+                      const data = await res.json();
+                      if (res.ok) {
+                        setAuthMsg("Check your email for a login link");
+                      } else {
+                        setAuthMsg(data.error || "Something went wrong");
+                      }
+                    } catch {
+                      setAuthMsg("Could not reach server");
+                    }
+                    setAuthLoading(false);
+                  }}
+                  className="flex gap-2"
+                >
+                  <input
+                    type="email"
+                    placeholder="Email address"
+                    value={authEmail}
+                    onChange={e => setAuthEmail(e.target.value)}
+                    required
+                    className="flex-1 bg-input-bg border border-input-border rounded-[6px] px-2.5 py-1.5 text-[13px] text-text"
+                  />
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="bg-accent text-black font-bold rounded-[6px] px-3 py-1.5 text-[13px] shrink-0"
+                  >
+                    {authLoading ? "Sending..." : "Send link"}
+                  </button>
+                </form>
+              )}
+              {!user && !authMsg && (
+                <p className="text-[11px] text-text-dark mt-1.5">Sign in to sync tracked players across devices</p>
+              )}
             </div>
           </div>
         )}

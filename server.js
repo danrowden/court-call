@@ -1,5 +1,8 @@
 import express from 'express'
 import pg from 'pg'
+import crypto from 'crypto'
+import jwt from 'jsonwebtoken'
+import nodemailer from 'nodemailer'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 
@@ -7,6 +10,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const app = express()
 const PORT = process.env.PORT || 3000
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me'
+const GMAIL_USER = process.env.GMAIL_USER
+const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD
+const APP_URL = (process.env.APP_URL || `http://localhost:${PORT}`).replace(/\/+$/, '')
 const HOST = 'tennisapi1.p.rapidapi.com'
 const FETCH_INTERVAL = 15 * 60 * 1000 // 15 minutes
 
@@ -73,6 +80,26 @@ async function initDb() {
     )
   `)
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_players_name ON players(LOWER(name))`)
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id          SERIAL PRIMARY KEY,
+      email       TEXT UNIQUE NOT NULL,
+      favourites  JSONB DEFAULT '[]',
+      created_at  TIMESTAMPTZ DEFAULT NOW()
+    )
+  `)
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS magic_links (
+      id          SERIAL PRIMARY KEY,
+      user_id     INTEGER REFERENCES users(id),
+      token       TEXT UNIQUE NOT NULL,
+      expires_at  TIMESTAMPTZ NOT NULL,
+      used_at     TIMESTAMPTZ
+    )
+  `)
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_magic_links_token ON magic_links(token)`)
 
   console.log('Database tables ready')
 }
@@ -241,6 +268,167 @@ async function fetchCalendar() {
     console.warn('Calendar fetch skipped:', err?.message || String(err))
   }
 }
+
+// ─── Auth Helpers ─────────────────────────────────────────────────────────────
+
+const AUTH_ENABLED = !!JWT_SECRET
+
+// NOTE: Gmail-based magic-link auth is temporarily disabled in favour of
+// a simple hard-coded email/password check for local development.
+const COOKIE_NAME = 'baseline_token'
+const JWT_EXPIRY = '30d'
+const MAGIC_LINK_EXPIRY_MINUTES = 15
+
+function parseCookies(req) {
+  const header = req.headers.cookie || ''
+  const cookies = {}
+  for (const pair of header.split(';')) {
+    const [k, ...v] = pair.trim().split('=')
+    if (k) cookies[k] = decodeURIComponent(v.join('='))
+  }
+  return cookies
+}
+
+function authMiddleware(req, res, next) {
+  if (!AUTH_ENABLED) return res.status(501).json({ error: 'Auth not configured' })
+  const token = parseCookies(req)[COOKIE_NAME]
+  if (!token) return res.status(401).json({ error: 'Not authenticated' })
+  try {
+    req.user = jwt.verify(token, JWT_SECRET)
+    next()
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired session' })
+  }
+}
+
+function setAuthCookie(res, userId, email) {
+  const token = jwt.sign({ userId, email }, JWT_SECRET, { expiresIn: JWT_EXPIRY })
+  const maxAge = 30 * 24 * 60 * 60 // 30 days in seconds
+  const secure = APP_URL.startsWith('https')
+  res.setHeader('Set-Cookie',
+    `${COOKIE_NAME}=${token}; HttpOnly; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure ? '; Secure' : ''}`
+  )
+}
+
+function clearAuthCookie(res) {
+  res.setHeader('Set-Cookie',
+    `${COOKIE_NAME}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`
+  )
+}
+
+// ─── Auth Endpoints ───────────────────────────────────────────────────────────
+
+app.use(express.json())
+
+// Simple email + password login (temporary dev auth)
+app.post('/api/auth/login', async (req, res) => {
+  if (!AUTH_ENABLED) return res.status(501).json({ error: 'Auth not configured' })
+
+  const email = (req.body.email || '').trim().toLowerCase()
+  const password = req.body.password || ''
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' })
+  }
+
+  // Temporary hard-coded credentials for local login
+  const DEV_EMAIL = 'rowden.dan@gmail.com'
+  const DEV_PASSWORD = 'tennis1234'
+
+  if (email !== DEV_EMAIL || password !== DEV_PASSWORD) {
+    return res.status(401).json({ error: 'Invalid email or password' })
+  }
+
+  try {
+    // Ensure user exists
+    const { rows } = await pool.query(
+      `INSERT INTO users (email) VALUES ($1)
+       ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
+       RETURNING id`,
+      [email]
+    )
+    const userId = rows[0].id
+
+    // Issue JWT session cookie directly on successful password auth
+    setAuthCookie(res, userId, email)
+
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('POST /api/auth/login error:', err)
+    res.status(500).json({ error: 'Something went wrong' })
+  }
+})
+
+// Verify magic link token
+app.get('/api/auth/verify', async (req, res) => {
+  if (!AUTH_ENABLED) return res.status(501).send('Auth not configured')
+
+  const token = (req.query.token || '').trim()
+  if (!token) return res.status(400).send('Missing token')
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT ml.id, ml.user_id, u.email
+       FROM magic_links ml JOIN users u ON u.id = ml.user_id
+       WHERE ml.token = $1 AND ml.used_at IS NULL AND ml.expires_at > NOW()`,
+      [token]
+    )
+
+    if (rows.length === 0) return res.status(400).send('Invalid or expired link')
+
+    const { id: linkId, user_id: userId, email } = rows[0]
+
+    // Mark as used
+    await pool.query(`UPDATE magic_links SET used_at = NOW() WHERE id = $1`, [linkId])
+
+    // Set session cookie
+    setAuthCookie(res, userId, email)
+
+    // Redirect to app
+    res.redirect('/')
+  } catch (err) {
+    console.error('GET /api/auth/verify error:', err)
+    res.status(500).send('Something went wrong')
+  }
+})
+
+// Get current user
+app.get('/api/auth/me', authMiddleware, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT email, favourites FROM users WHERE id = $1',
+      [req.user.userId]
+    )
+    if (rows.length === 0) return res.status(401).json({ error: 'User not found' })
+    res.json({ email: rows[0].email, favourites: rows[0].favourites || [] })
+  } catch (err) {
+    console.error('GET /api/auth/me error:', err)
+    res.status(500).json({ error: 'Failed to load user' })
+  }
+})
+
+// Logout
+app.post('/api/auth/logout', (req, res) => {
+  clearAuthCookie(res)
+  res.json({ ok: true })
+})
+
+// Save favourites
+app.put('/api/favourites', authMiddleware, async (req, res) => {
+  const favourites = req.body.favourites
+  if (!Array.isArray(favourites)) return res.status(400).json({ error: 'favourites must be an array' })
+
+  try {
+    await pool.query(
+      'UPDATE users SET favourites = $1 WHERE id = $2',
+      [JSON.stringify(favourites), req.user.userId]
+    )
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('PUT /api/favourites error:', err)
+    res.status(500).json({ error: 'Failed to save favourites' })
+  }
+})
 
 // ─── API Endpoints ───────────────────────────────────────────────────────────
 
@@ -415,6 +603,7 @@ async function start() {
 
   const server = app.listen(PORT, () => {
     console.log(`Baseline running on port ${PORT}`)
+    if (!AUTH_ENABLED) console.warn('Auth disabled: set JWT_SECRET, GMAIL_USER, and GMAIL_APP_PASSWORD to enable')
   })
 
   server.on('error', (err) => {

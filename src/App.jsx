@@ -7,6 +7,7 @@ import {
   Settings,
   Star,
   X,
+  Globe
 } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -443,25 +444,22 @@ export default function CourtCall() {
         button:not(:disabled):hover { opacity: 0.8; }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-thumb { background: #1e1e1e; border-radius: 2px; }
+        svg { flex-shrink: 0; }
       `}</style>
 
       <div style={{ maxWidth: "580px", margin: "0 auto" }}>
 
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "18px" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "8px" }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: "24px", fontWeight: 800, letterSpacing: "-0.03em" }}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
-                <Circle size={32} fill="#e1ea18" stroke="#0c0c0c" strokeWidth={2} aria-hidden="true" />
+            <h1 style={{ margin: 0, fontSize: "20px", fontWeight: 800, letterSpacing: "-0.03em" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                <Circle size={24} fill="#e1ea18" stroke="#0c0c0c" strokeWidth={2} aria-hidden="true" />
                 <span>Baseline</span>
               </span>
             </h1>
-            <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#838383" }}>
-              {lastFetched ? `Cached ${lastFetched.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · ` : ""}
-              {USER_TZ_SHORT} time · {favourites.length} player{favourites.length !== 1 ? "s" : ""} tracked
-            </p>
           </div>
-          <div style={{ display: "flex", gap: "7px" }}>
+          <div style={{ display: "flex", gap: "7px", flexShrink: 0 }}>
             <button onClick={fetchEvents} disabled={loading} title="Refresh"
               style={{ background: "none", border: "1px solid #1c1c1c", borderRadius: "7px", color: "#838383", padding: "6px 10px", fontSize: "14px" }}>
               <RefreshCw size={16} aria-hidden="true" />
@@ -475,6 +473,11 @@ export default function CourtCall() {
             </button>
           </div>
         </div>
+
+        <p style={{ margin: "4px 0 16px", fontSize: "13px", color: "#838383" }}>
+          {lastFetched ? `Cached ${lastFetched.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · ` : ""}
+          {USER_TZ_SHORT} time · {favourites.length} player{favourites.length !== 1 ? "s" : ""} tracked
+        </p>
 
         {/* Settings */}
         {showSettings && (
@@ -568,8 +571,14 @@ export default function CourtCall() {
           </>
         )}
 
-        <div style={{ textAlign: "center", marginTop: "36px", color: "#181818", fontSize: "13px" }}>
-          Times in {USER_TZ_SHORT} · Data via TennisApi on RapidAPI
+        <div style={{ textAlign: "center", marginTop: "36px", color: "#838383", fontSize: "13px" }}>
+           <span style={{display: "inline-flex", alignItems: "center", gap: "4px"}}>
+             <Globe size={15} stroke="#555" aria-hidden="true" />
+             {USER_TZ}
+           </span>
+        </div>
+        <div style={{ textAlign: "center", marginTop: "8px", color: "#838383", fontSize: "13px" }}>
+          Tennis player tracker · By <a href="https://x.com/dr" target="_blank" rel="noopener noreferrer">@dr</a>
         </div>
       </div>
     </div>

@@ -110,6 +110,7 @@ async function fetchCalendar() {
 
       if (!res.ok) {
         const msg = data?.message || data?.error || `HTTP ${res.status}`
+        console.log(msg);
         return {
           ok: false,
           status: res.status,
@@ -119,6 +120,7 @@ async function fetchCalendar() {
       }
 
       if (data?.message) {
+        console.log(data.message);
         return {
           ok: false,
           status: 502,
@@ -126,7 +128,7 @@ async function fetchCalendar() {
           events: [],
         }
       }
-
+      console.log(`${data.length} matches found`);
       return {
         ok: true,
         status: res.status,

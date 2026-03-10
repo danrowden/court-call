@@ -286,7 +286,7 @@ function PlayerSearch({ onAdd, existingIds }) {
           value={query}
           onChange={e => handleChange(e.target.value)}
           placeholder="Search player name..."
-          style={{ width: "100%", background: "#0a0a0a", border: "1px solid #222", borderRadius: "7px", padding: "9px 12px", color: "#e0e0e0", fontSize: "13px" }}
+          style={{ width: "100%", background: "#0a0a0a", border: "1px solid #222", borderRadius: "7px", padding: "9px 12px", color: "#e0e0e0", fontSize: "16px" }}
         />
         {searching && (
           <div style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)" }}>

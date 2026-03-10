@@ -133,8 +133,8 @@ function Badge({ event, live }) {
 function MatchCard({ event, favouriteIds }) {
   const isLive = event.status?.type === "inprogress";
   const isDone = event.status?.type === "finished";
-  const p1 = event.homeTeam?.shortName || event.homeTeam?.name || "TBD";
-  const p2 = event.awayTeam?.shortName || event.awayTeam?.name || "TBD";
+  const p1 = event.homeTeam?.name || "TBD";
+  const p2 = event.awayTeam?.name || "TBD";
   const p1Fav = favouriteIds.includes(event.homeTeam?.id);
   const p2Fav = favouriteIds.includes(event.awayTeam?.id);
   const isFav = p1Fav || p2Fav;
@@ -152,8 +152,6 @@ function MatchCard({ event, favouriteIds }) {
 
   return (
     <div
-      onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; }}
-      onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; }}
       style={{
         background: isFav ? "linear-gradient(135deg,#161200,#1a1600)" : "linear-gradient(135deg,#121212,#171717)",
         border: `1px solid ${isLive ? "#ef8383834" : isFav ? "#332800" : "#1c1c1c"}`,
@@ -169,20 +167,23 @@ function MatchCard({ event, favouriteIds }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           {[[p1, p1Fav, winnerHome], [p2, p2Fav, winnerAway]].map(([name, fav, winner], i) => (
             <div key={i} style={{ display: "flex", alignItems: "baseline", gap: "6px", marginBottom: i === 0 ? "5px" : 0 }}>
+              {fav ? <Star aria-label="tracked" style={starStyle} /> : null}
               <span style={{
                 fontSize: "14px",
                 fontWeight: fav ? 700 : winner ? 600 : 400,
                 color: fav ? "#f5c842" : winner ? "#e0e0e0" : isDone ? "#555" : "#ccc",
                 fontFamily: "'DM Mono', monospace",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
               }}>
-                {fav ? <Star aria-label="tracked" style={starStyle} /> : null}{name}
+                {name}
                 {winner && isDone && (
                   <span style={{ marginLeft: "6px", display: "inline-flex", alignItems: "center" }}>
                     <Check aria-label="winner" size={14} style={{ color: "#4ade80" }} />
                   </span>
                 )}
               </span>
-              {i === 0 && <span style={{ fontSize: "12px", color: "#2a2a2a", flexShrink: 0 }}>vs</span>}
             </div>
           ))}
         </div>
@@ -201,7 +202,7 @@ function MatchCard({ event, favouriteIds }) {
             </div>
           ) : (
             <div>
-              <div style={{ fontSize: "12px", color: "#838383", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "2px" }}>{USER_TZ_SHORT}</div>
+              {/* <div style={{ fontSize: "12px", color: "#838383", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "2px" }}>{USER_TZ_SHORT}</div> */}
               <div style={{ fontSize: "22px", fontWeight: 800, color: "#f5c842", fontFamily: "'DM Mono', monospace", letterSpacing: "-0.02em", lineHeight: 1 }}>{localTime}</div>
               {showVenue && <div style={{ fontSize: "13px", color: "#838383", fontFamily: "'DM Mono', monospace", marginTop: "2px" }}>{venueTime} local</div>}
             </div>
@@ -532,7 +533,7 @@ export default function CourtCall() {
         {loading ? (
           <div style={{ textAlign: "center", padding: "60px 0" }}>
             <div style={{ width: "26px", height: "26px", border: "3px solid #181818", borderTopColor: "#f5c842", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 10px" }} />
-            <div style={{ fontSize: "13px", color: "#2a2a2a" }}>Loading fixtures…</div>
+            <div style={{ fontSize: "13px", color: "#838383" }}>Loading matches...</div>
           </div>
         ) : visibleDates.length === 0 && !error ? (
           <div style={{ textAlign: "center", padding: "60px 0" }}>

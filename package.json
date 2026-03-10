@@ -11,6 +11,9 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@carrot-kpi/switzer-font": "^0.1.0",
+    "@fontsource-variable/geist-mono": "^5.2.7",
+    "@fontsource/geist-mono": "^5.2.7",
     "@tailwindcss/vite": "^4.2.1",
     "express": "^4.18.2",
     "lucide-react": "^0.542.0",

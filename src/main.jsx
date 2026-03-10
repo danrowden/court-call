@@ -1,5 +1,11 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import '@carrot-kpi/switzer-font/400.css'
+import '@carrot-kpi/switzer-font/500.css'
+import '@carrot-kpi/switzer-font/600.css'
+import '@carrot-kpi/switzer-font/700.css'
+import '@fontsource/geist-mono/400.css'
+import '@fontsource/geist-mono/500.css'
 import './index.css'
 import App from './App'
 

@@ -10,9 +10,24 @@ const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY
 const HOST = 'tennisapi1.p.rapidapi.com'
 const FETCH_INTERVAL = 30 * 60 * 1000 // 30 minutes
 
-// ─── Database ────────────────────────────────────────────────────────────────
+// ─── Config & Database ───────────────────────────────────────────────────────
 
-const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false } })
+const DATABASE_URL = process.env.DATABASE_URL
+
+if (!DATABASE_URL) {
+  console.error('DATABASE_URL environment variable is required')
+  process.exit(1)
+}
+
+const rawRetentionDays = parseInt(process.env.EVENT_RETENTION_DAYS || '7', 10)
+const EVENT_RETENTION_DAYS = Number.isFinite(rawRetentionDays) && rawRetentionDays > 0
+  ? Math.min(rawRetentionDays, 90)
+  : 7
+
+const pool = new pg.Pool({
+  connectionString: DATABASE_URL,
+  ssl: DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false },
+})
 
 async function initDb() {
   await pool.query(`
@@ -66,41 +81,90 @@ async function initDb() {
 
 async function fetchCalendar() {
   if (!RAPIDAPI_KEY) return
-  console.log('Fetching calendar from TennisAPI...')
+  console.log('Fetching events from TennisAPI...')
 
   try {
-    const now = new Date()
-    const month = now.getMonth() + 1
-    const year = now.getFullYear()
+    const normalizeEventsResponse = (data) => {
+      if (!data) return []
+      if (Array.isArray(data)) return data
+      if (Array.isArray(data.events)) return data.events
+      if (data.data && Array.isArray(data.data.events)) return data.data.events
+      return []
+    }
 
-    const fetchMonth = async (m, y) => {
-      const res = await fetch(`https://${HOST}/api/tennis/calendar/${m}/${y}`, {
-        headers: { 'x-rapidapi-host': HOST, 'x-rapidapi-key': RAPIDAPI_KEY }
+    const fetchEventsForDate = async (d) => {
+      const day = d.getDate()
+      const month = d.getMonth() + 1
+      const year = d.getFullYear()
+
+      const res = await fetch(`https://${HOST}/api/tennis/events/${day}/${month}/${year}`, {
+        headers: { 'x-rapidapi-host': HOST, 'x-rapidapi-key': RAPIDAPI_KEY },
       })
-      return res.json()
+
+      let data = null
+      try {
+        data = await res.json()
+      } catch {
+        // non-JSON response; leave data as null
+      }
+
+      if (!res.ok) {
+        const msg = data?.message || data?.error || `HTTP ${res.status}`
+        return {
+          ok: false,
+          status: res.status,
+          message: `Events endpoint failed for ${day}/${month}/${year}: ${msg}`,
+          events: [],
+        }
+      }
+
+      if (data?.message) {
+        return {
+          ok: false,
+          status: 502,
+          message: `Events endpoint error for ${day}/${month}/${year}: ${data.message}`,
+          events: [],
+        }
+      }
+
+      return {
+        ok: true,
+        status: res.status,
+        message: null,
+        events: normalizeEventsResponse(data),
+      }
     }
 
-    const thisMonth = await fetchMonth(month, year)
-    if (thisMonth.message || (!thisMonth.events && !Array.isArray(thisMonth))) {
-      throw new Error(thisMonth.message || 'Unexpected response')
-    }
+    const now = new Date()
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
-    let all = thisMonth.events || thisMonth || []
+    // Today + next 7 days (8 days total)
+    let all = []
+    for (let i = 0; i <= 7; i++) {
+      const d = new Date(start)
+      d.setDate(start.getDate() + i)
+      const result = await fetchEventsForDate(d)
+      if (!result.ok) {
+        // Keep this quiet: a single-line warning with no stack trace.
+        console.warn(`Calendar fetch skipped: ${result.message}`)
 
-    // If last 7 days of month, also fetch next month
-    const daysInMonth = new Date(year, month, 0).getDate()
-    if (now.getDate() >= daysInMonth - 6) {
-      const nm = month === 12 ? 1 : month + 1
-      const ny = month === 12 ? year + 1 : year
-      const next = await fetchMonth(nm, ny)
-      all = [...all, ...(next.events || next || [])]
+        // If rate-limited, stop trying further days.
+        if (result.status === 429) break
+        continue
+      }
+      all = all.concat(result.events)
     }
 
     // Upsert events
     let eventCount = 0
     for (const e of all) {
-      if (!e.id) continue
-      await pool.query(`
+      if (!e?.id) continue
+
+      const startTs = Number.isFinite(e.startTimestamp) ? Math.floor(e.startTimestamp) : null
+      if (!startTs) continue
+
+      try {
+        await pool.query(`
         INSERT INTO events (id, start_timestamp, status_code, status_type, status_desc,
           home_team_id, home_team_name, home_team_short, home_country,
           away_team_id, away_team_name, away_team_short, away_country,
@@ -118,52 +182,61 @@ async function fetchCalendar() {
           home_score=$22, away_score=$23, raw_json=$24,
           updated_at=EXTRACT(EPOCH FROM NOW())::INTEGER
       `, [
-        e.id,
-        e.startTimestamp,
-        e.status?.code ?? null,
-        e.status?.type ?? null,
-        e.status?.description ?? null,
-        e.homeTeam?.id ?? null,
-        e.homeTeam?.name ?? null,
-        e.homeTeam?.shortName ?? null,
-        e.homeTeam?.country?.name ?? null,
-        e.awayTeam?.id ?? null,
-        e.awayTeam?.name ?? null,
-        e.awayTeam?.shortName ?? null,
-        e.awayTeam?.country?.name ?? null,
-        e.tournament?.name ?? null,
-        e.tournament?.category?.name ?? null,
-        e.tournament?.uniqueTournament?.tennisPoints ?? null,
-        e.season?.name ?? null,
-        e.roundInfo?.round ?? null,
-        e.roundInfo?.name ?? null,
-        e.winnerCode ?? null,
-        e.groundType ?? e.tournament?.uniqueTournament?.groundType ?? null,
-        JSON.stringify(e.homeScore || {}),
-        JSON.stringify(e.awayScore || {}),
-        JSON.stringify(e),
-      ])
-      eventCount++
+          e.id,
+          startTs,
+          e.status?.code ?? null,
+          e.status?.type ?? null,
+          e.status?.description ?? null,
+          e.homeTeam?.id ?? null,
+          e.homeTeam?.name ?? null,
+          e.homeTeam?.shortName ?? null,
+          e.homeTeam?.country?.name ?? null,
+          e.awayTeam?.id ?? null,
+          e.awayTeam?.name ?? null,
+          e.awayTeam?.shortName ?? null,
+          e.awayTeam?.country?.name ?? null,
+          e.tournament?.name ?? null,
+          e.tournament?.category?.name ?? null,
+          e.tournament?.uniqueTournament?.tennisPoints ?? null,
+          e.season?.name ?? null,
+          e.roundInfo?.round ?? null,
+          e.roundInfo?.name ?? null,
+          e.winnerCode ?? null,
+          e.groundType ?? e.tournament?.uniqueTournament?.groundType ?? null,
+          JSON.stringify(e.homeScore || {}),
+          JSON.stringify(e.awayScore || {}),
+          JSON.stringify(e),
+        ])
+        eventCount++
 
-      // Upsert players from home/away teams
-      for (const team of [e.homeTeam, e.awayTeam]) {
-        if (!team?.id) continue
-        await pool.query(`
+        // Upsert players from home/away teams
+        for (const team of [e.homeTeam, e.awayTeam]) {
+          if (!team?.id) continue
+          await pool.query(`
           INSERT INTO players (id, name, short_name, country, seen_at)
           VALUES ($1, $2, $3, $4, EXTRACT(EPOCH FROM NOW())::INTEGER)
           ON CONFLICT (id) DO UPDATE SET
             name=$2, short_name=$3, country=$4, seen_at=EXTRACT(EPOCH FROM NOW())::INTEGER
         `, [team.id, team.name || '', team.shortName || null, team.country?.name || null])
+        }
+      } catch (err) {
+        console.error('Failed to upsert event or players for id', e.id, err)
       }
     }
 
-    // Cleanup old events (older than 7 days)
-    const cutoff = Math.floor(Date.now() / 1000) - 7 * 86400
-    const { rowCount } = await pool.query('DELETE FROM events WHERE start_timestamp < $1', [cutoff])
+    // Cleanup old events (based on configurable retention)
+    const nowTs = Math.floor(Date.now() / 1000)
+    const cutoff = nowTs - EVENT_RETENTION_DAYS * 86400
+    const { rowCount } = await pool.query(
+      'DELETE FROM events WHERE start_timestamp < $1 AND start_timestamp > 0',
+      [cutoff]
+    )
 
-    console.log(`Fetched ${eventCount} events, cleaned ${rowCount} old events`)
+    console.log(
+      `Fetched ${eventCount} events, cleaned ${rowCount} old events (retention ${EVENT_RETENTION_DAYS} days)`
+    )
   } catch (err) {
-    console.error('Calendar fetch failed:', err.message)
+    console.warn('Calendar fetch skipped:', err?.message || String(err))
   }
 }
 
@@ -182,7 +255,7 @@ app.get('/api/events', async (req, res) => {
       cachedAt: new Date().toISOString(),
     })
   } catch (err) {
-    console.error('GET /api/events error:', err.message)
+    console.error('GET /api/events error:', err)
     res.status(500).json({ error: 'Failed to load events' })
   }
 })
@@ -195,23 +268,72 @@ app.get('/api/players', async (req, res) => {
     )
     res.json({ players: rows })
   } catch (err) {
-    console.error('GET /api/players error:', err.message)
+    console.error('GET /api/players error:', err)
     res.status(500).json({ error: 'Failed to load players' })
   }
 })
 
 // Proxy player search to RapidAPI (fallback when not in local cache)
 app.get('/api/players/search', async (req, res) => {
-  const q = req.query.q
-  if (!q || q.length < 2) return res.json({ results: [] })
-  if (!RAPIDAPI_KEY) return res.status(503).json({ error: 'API key not configured' })
+  const rawQ = req.query.q
+  const q = Array.isArray(rawQ)
+    ? (rawQ[0] || '').trim()
+    : typeof rawQ === 'string'
+      ? rawQ.trim()
+      : ''
+
+  if (!q || q.length < 2 || q.length > 100) return res.json({ results: [] })
+  const lowerQ = q.toLowerCase()
 
   try {
+    // Always search local cache first
+    const { rows: localRows } = await pool.query(
+      `
+        SELECT id, name, short_name AS "shortName", country
+        FROM players
+        WHERE LOWER(name) LIKE $1 OR LOWER(COALESCE(short_name, '')) LIKE $1
+        ORDER BY seen_at DESC, name ASC
+        LIMIT 6
+      `,
+      [`%${lowerQ}%`]
+    )
+
+    // If we already have enough local matches (or RapidAPI not configured), return them.
+    if (localRows.length >= 6 || !RAPIDAPI_KEY) {
+      return res.json({ results: localRows })
+    }
+
     const apiRes = await fetch(
       `https://${HOST}/api/tennis/search/${encodeURIComponent(q)}`,
       { headers: { 'x-rapidapi-host': HOST, 'x-rapidapi-key': RAPIDAPI_KEY } }
     )
-    const data = await apiRes.json()
+    let data = null
+    try {
+      data = await apiRes.json()
+    } catch {
+      data = null
+    }
+
+    if (!apiRes.ok) {
+      const message = data?.message || data?.error || `HTTP ${apiRes.status}`
+      // If upstream is rate-limited (or otherwise failing), fall back to local matches.
+      if (apiRes.status === 429) {
+        return res.json({ results: localRows, warning: message })
+      }
+      // For other upstream failures, still prefer returning local data if we have any.
+      if (localRows.length > 0) {
+        return res.json({ results: localRows, warning: message })
+      }
+      return res.status(apiRes.status).json({ error: message })
+    }
+
+    if (data?.message) {
+      if (localRows.length > 0) {
+        return res.json({ results: localRows, warning: data.message })
+      }
+      return res.status(502).json({ error: data.message })
+    }
+
     const players = (data.results || [])
       .filter(r => r.type === 'player' || r.entity?.type === 'player')
       .slice(0, 6)
@@ -236,10 +358,34 @@ app.get('/api/players/search', async (req, res) => {
       `, [p.id, p.name, p.shortName || null, p.country || null])
     }
 
-    res.json({ results: players })
+    // Merge local + remote (prefer local ordering first, then remote uniques)
+    const seen = new Set(localRows.map(p => p.id))
+    const merged = [...localRows]
+    for (const p of players) {
+      if (!p?.id || seen.has(p.id)) continue
+      merged.push(p)
+      if (merged.length >= 6) break
+    }
+
+    res.json({ results: merged.slice(0, 6) })
   } catch (err) {
-    console.error('Player search error:', err.message)
-    res.status(500).json({ error: 'Search failed' })
+    console.error('Player search error:', err)
+    // If something unexpected happens, still try to return local matches if possible.
+    try {
+      const { rows } = await pool.query(
+        `
+          SELECT id, name, short_name AS "shortName", country
+          FROM players
+          WHERE LOWER(name) LIKE $1 OR LOWER(COALESCE(short_name, '')) LIKE $1
+          ORDER BY seen_at DESC, name ASC
+          LIMIT 6
+        `,
+        [`%${lowerQ}%`]
+      )
+      return res.json({ results: rows, warning: 'Search failed upstream; returned local matches' })
+    } catch {
+      res.status(500).json({ error: 'Search failed' })
+    }
   }
 })
 
@@ -263,8 +409,17 @@ async function start() {
     console.warn('WARNING: RAPIDAPI_KEY not set. Calendar fetch disabled.')
   }
 
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     console.log(`Baseline running on port ${PORT}`)
+  })
+
+  server.on('error', (err) => {
+    if (err && err.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} is already in use. Stop the other server or change PORT and retry.`)
+      process.exit(1)
+    }
+    console.error('Server error:', err)
+    process.exit(1)
   })
 }
 

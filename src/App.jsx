@@ -225,7 +225,12 @@ function PlayerSearch({ onAdd, existingIds }) {
     // Fallback: server proxy to RapidAPI search
     try {
       const res = await fetch(`/api/players/search?q=${encodeURIComponent(q)}`);
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setResults([]);
+        setSearchErr(data.error || "Search failed");
+        return;
+      }
       const players = (data.results || []).slice(0, 6);
       setResults(players);
       if (!players.length) setSearchErr("No players found");
@@ -290,6 +295,7 @@ function PlayerSearch({ onAdd, existingIds }) {
 
 // ─── localStorage helpers ─────────────────────────────────────────────────────
 const LS_KEY_FAV = "courtcall_favourites";
+const LS_FAV_VERSION = 1;
 
 const DEFAULT_FAVOURITES = [
   { id: 235576, name: "Brandon Nakashima", shortName: "B. Nakashima" },
@@ -298,11 +304,26 @@ const DEFAULT_FAVOURITES = [
 function loadFavourites() {
   try {
     const raw = localStorage.getItem(LS_KEY_FAV);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    if (!raw) return DEFAULT_FAVOURITES;
+
+    const parsed = JSON.parse(raw);
+
+    // Legacy format: plain array
+    if (Array.isArray(parsed)) {
+      return parsed.length > 0 ? parsed : DEFAULT_FAVOURITES;
+    }
+
+    // Versioned format
+    if (
+      parsed &&
+      typeof parsed === "object" &&
+      parsed.v === LS_FAV_VERSION &&
+      Array.isArray(parsed.favourites)
+    ) {
+      return parsed.favourites.length > 0 ? parsed.favourites : DEFAULT_FAVOURITES;
     }
   } catch {}
+
   return DEFAULT_FAVOURITES;
 }
 
@@ -318,7 +339,10 @@ export default function CourtCall() {
 
   // Persist favourites whenever they change
   useEffect(() => {
-    try { localStorage.setItem(LS_KEY_FAV, JSON.stringify(favourites)); } catch {}
+    try {
+      const payload = { v: LS_FAV_VERSION, favourites };
+      localStorage.setItem(LS_KEY_FAV, JSON.stringify(payload));
+    } catch {}
   }, [favourites]);
 
   const favouriteIds = favourites.map(f => f.id);

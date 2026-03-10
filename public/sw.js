@@ -8,7 +8,7 @@ self.addEventListener('install', (event) => {
         '/',
         '/index.html',
         '/manifest.json',
-        '/icon.svg',
+        '/app-icon.png',
       ])
     )
   )

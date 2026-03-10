@@ -238,8 +238,7 @@ function PlayerSearch({ onAdd, existingIds }) {
     // First: check local cache
     const lower = q.toLowerCase();
     const localMatches = knownPlayers.filter(p =>
-      (p.name && p.name.toLowerCase().includes(lower)) ||
-      (p.shortName && p.shortName.toLowerCase().includes(lower))
+      p.name && p.name.toLowerCase().includes(lower)
     ).slice(0, 6);
 
     if (localMatches.length > 0) {
@@ -302,7 +301,7 @@ function PlayerSearch({ onAdd, existingIds }) {
                 </div>
                 <button
                   disabled={already}
-                  onClick={() => { onAdd({ id: p.id, name: p.name, shortName: p.shortName }); setQuery(""); setResults([]); }}
+                  onClick={() => { onAdd({ id: p.id, name: p.name }); setQuery(""); setResults([]); }}
                   className={`border-none rounded-[5px] px-3 py-1 text-[13px] font-bold ${
                     already ? "bg-[#1a1a1a] text-text-dimmer cursor-default" : "bg-accent text-black cursor-pointer"
                   }`}>
@@ -322,7 +321,7 @@ const LS_KEY_FAV = "courtcall_favourites";
 const LS_FAV_VERSION = 1;
 
 const DEFAULT_FAVOURITES = [
-  { id: 235576, name: "Brandon Nakashima", shortName: "B. Nakashima" },
+  { id: 258749, name: "Jack Draper" },
 ];
 
 function loadFavourites() {
@@ -464,9 +463,9 @@ export default function CourtCall() {
                   {favourites.map(f => (
                     <span key={f.id} className="bg-fav-chip-bg border border-fav-chip-border text-accent pl-2 pr-2.5 py-1 rounded-[5px] text-[13px] flex items-center gap-1.5">
                       <Star aria-hidden="true" size={14} className="text-accent fill-accent" />
-                      <span>{f.shortName || f.name}</span>
+                      <span>{f.name}</span>
                       <button onClick={() => setFavourites(fvs => fvs.filter(x => x.id !== f.id))}
-                        aria-label={`Remove ${f.shortName || f.name}`}
+                        aria-label={`Remove ${f.name}`}
                         className="text-text-muted p-0 leading-none inline-flex items-center">
                         <X size={14} aria-hidden="true" />
                       </button>

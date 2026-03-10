@@ -8,7 +8,7 @@ const app = express()
 const PORT = process.env.PORT || 3000
 const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY
 const HOST = 'tennisapi1.p.rapidapi.com'
-const FETCH_INTERVAL = 30 * 60 * 1000 // 30 minutes
+const FETCH_INTERVAL = 15 * 60 * 1000 // 15 minutes
 
 // ─── Config & Database ───────────────────────────────────────────────────────
 
@@ -138,9 +138,9 @@ async function fetchCalendar() {
     const now = new Date()
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
-    // Today + next 5 days (6 days total)
+    // Today + next 3 days (4 days total)
     let all = []
-    for (let i = 0; i <= 5; i++) {
+    for (let i = 0; i <= 3; i++) {
       const d = new Date(start)
       d.setDate(start.getDate() + i)
       const result = await fetchEventsForDate(d)

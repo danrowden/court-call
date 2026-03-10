@@ -23,10 +23,10 @@ The server uses RapidAPI’s TennisAPI host `tennisapi1.p.rapidapi.com` and the 
 
 ### Periodic refresh (server-side cache warmer)
 
-On startup (and then every 30 minutes), `server.js` fetches **today + next 5 days** of events and **upserts** them into Postgres.
+On startup (and then every 15 minutes), `server.js` fetches **today + next 3 days** of events and **upserts** them into Postgres.
 
-- **Schedule**: every 30 minutes (`FETCH_INTERVAL`)
-- **Range**: today through +7 days (8 days total)
+- **Schedule**: every 15 minutes (`FETCH_INTERVAL`)
+- **Range**: today through +3 days (4 days total)
 - **Retention cleanup**: deletes events older than `EVENT_RETENTION_DAYS` (default 7, capped at 90)
 
 ### Postgres storage

@@ -1,18 +1,45 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  AlertTriangle,
+  Check,
+  Circle,
+  RefreshCw,
+  Settings,
+  Star,
+  X,
+} from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const USER_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const USER_TZ_SHORT = USER_TZ.split("/").pop().replace(/_/g, " ");
 
-const SURFACE_EMOJI = {
-  "hardcourt outdoor": "🔵", "hardcourt indoor": "🔵",
-  "clay": "🟤", "clay outdoor": "🟤", "clay indoor": "🟤",
-  "grass": "🟢", "grass outdoor": "🟢",
-  "carpet": "⬜",
+const SURFACE_COLOR = {
+  hardcourt: "#60a5fa",
+  clay: "#a16207",
+  grass: "#22c55e",
+  carpet: "#e5e7eb",
+  default: "#f5c842",
 };
 
-function surfaceIcon(groundType) {
-  return SURFACE_EMOJI[(groundType || "").toLowerCase()] || "🎾";
+function SurfaceIcon({ groundType, size = 14 }) {
+  const t = (groundType || "").toLowerCase();
+  const key =
+    t.includes("hard") ? "hardcourt" :
+    t.includes("clay") ? "clay" :
+    t.includes("grass") ? "grass" :
+    t.includes("carpet") ? "carpet" :
+    "default";
+  const fill = SURFACE_COLOR[key] || SURFACE_COLOR.default;
+  return (
+    <Circle
+      size={size}
+      style={{ color: fill }}
+      fill="currentColor"
+      stroke="#0c0c0c"
+      strokeWidth={2}
+      aria-label={groundType || "surface"}
+    />
+  );
 }
 
 // ─── Time helpers (startTimestamp is UTC unix seconds) ────────────────────────
@@ -90,7 +117,7 @@ function formatScore(event) {
 // ─── Badge ────────────────────────────────────────────────────────────────────
 function Badge({ event, live }) {
   if (live) return (
-    <span style={{ background: "#ef4444", color: "#fff", fontSize: "10px", fontWeight: 700, padding: "2px 9px", borderRadius: "4px", letterSpacing: "0.06em", animation: "livepulse 1.5s ease-in-out infinite" }}>● LIVE</span>
+    <span style={{ background: "#ef8383834", color: "#fff", fontSize: "12px", fontWeight: 700, padding: "2px 9px", borderRadius: "4px", letterSpacing: "0.06em", animation: "livepulse 1.5s ease-in-out infinite" }}>● LIVE</span>
   );
   const cat = event.tournament?.category?.name || event.season?.name || "";
   const pts = event.tournament?.uniqueTournament?.tennisPoints;
@@ -98,7 +125,7 @@ function Badge({ event, live }) {
   const isWTA = /wta/i.test(cat);
   const isITF = /itf/i.test(cat);
   const [bg, fg] = isWTA ? ["#3a0a1e", "#f472b6"] : isITF ? ["#0a2e1a", "#4ade80"] : ["#0a1e3a", "#60a5fa"];
-  return <span style={{ background: bg, color: fg, fontSize: "10px", fontWeight: 700, padding: "2px 9px", borderRadius: "4px", letterSpacing: "0.06em", textTransform: "uppercase" }}>{label || "ATP"}</span>;
+  return <span style={{ background: bg, color: fg, fontSize: "12px", fontWeight: 700, padding: "2px 9px", borderRadius: "4px", letterSpacing: "0.06em", textTransform: "uppercase" }}>{label || "ATP"}</span>;
 }
 
 // ─── Match Card ───────────────────────────────────────────────────────────────
@@ -120,6 +147,7 @@ function MatchCard({ event, favouriteIds }) {
   const ground = event.groundType || event.tournament?.uniqueTournament?.groundType;
   const winnerHome = event.winnerCode === 1;
   const winnerAway = event.winnerCode === 2;
+  const starStyle = { width: "14px", height: "14px", color: "#f5c842", fill: "#f5c842", flexShrink: 0, transform: "translateY(1px)" };
 
   return (
     <div
@@ -127,13 +155,13 @@ function MatchCard({ event, favouriteIds }) {
       onMouseLeave={e => { e.currentTarget.style.transform = "translateY(0)"; }}
       style={{
         background: isFav ? "linear-gradient(135deg,#161200,#1a1600)" : "linear-gradient(135deg,#121212,#171717)",
-        border: `1px solid ${isLive ? "#ef4444" : isFav ? "#332800" : "#1c1c1c"}`,
+        border: `1px solid ${isLive ? "#ef8383834" : isFav ? "#332800" : "#1c1c1c"}`,
         borderRadius: "10px", padding: "14px 18px", marginBottom: "8px",
         position: "relative", overflow: "hidden",
         transition: "transform 0.15s",
         opacity: isDone ? 0.55 : 1,
       }}>
-      {isLive && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "2px", background: "#ef4444", animation: "livepulse 1.5s ease-in-out infinite" }} />}
+      {isLive && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "2px", background: "#ef8383834", animation: "livepulse 1.5s ease-in-out infinite" }} />}
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px" }}>
         {/* Players */}
@@ -146,10 +174,14 @@ function MatchCard({ event, favouriteIds }) {
                 color: fav ? "#f5c842" : winner ? "#e0e0e0" : isDone ? "#555" : "#ccc",
                 fontFamily: "'DM Mono', monospace",
               }}>
-                {fav ? "★ " : ""}{name}
-                {winner && isDone && <span style={{ color: "#4ade80", fontSize: "11px", marginLeft: "6px" }}>✓</span>}
+                {fav ? <Star aria-label="tracked" style={starStyle} /> : null}{name}
+                {winner && isDone && (
+                  <span style={{ marginLeft: "6px", display: "inline-flex", alignItems: "center" }}>
+                    <Check aria-label="winner" size={14} style={{ color: "#4ade80" }} />
+                  </span>
+                )}
               </span>
-              {i === 0 && <span style={{ fontSize: "10px", color: "#2a2a2a", flexShrink: 0 }}>vs</span>}
+              {i === 0 && <span style={{ fontSize: "12px", color: "#2a2a2a", flexShrink: 0 }}>vs</span>}
             </div>
           ))}
         </div>
@@ -158,19 +190,19 @@ function MatchCard({ event, favouriteIds }) {
         <div style={{ textAlign: "right", flexShrink: 0 }}>
           {isDone && score ? (
             <div>
-              <div style={{ fontSize: "10px", color: "#3a3a3a", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "2px" }}>Final</div>
+              <div style={{ fontSize: "12px", color: "#838383", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "2px" }}>Final</div>
               <div style={{ fontSize: "14px", fontWeight: 600, color: "#555", fontFamily: "'DM Mono', monospace", whiteSpace: "nowrap" }}>{score}</div>
             </div>
           ) : isLive ? (
             <div style={{ textAlign: "right" }}>
-              {score && <div style={{ fontSize: "16px", fontWeight: 800, color: "#ef4444", fontFamily: "'DM Mono', monospace", marginBottom: "4px" }}>{score}</div>}
+              {score && <div style={{ fontSize: "16px", fontWeight: 800, color: "#ef8383834", fontFamily: "'DM Mono', monospace", marginBottom: "4px" }}>{score}</div>}
               <Badge event={event} live />
             </div>
           ) : (
             <div>
-              <div style={{ fontSize: "10px", color: "#444", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "2px" }}>{USER_TZ_SHORT}</div>
+              <div style={{ fontSize: "12px", color: "#838383", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "2px" }}>{USER_TZ_SHORT}</div>
               <div style={{ fontSize: "22px", fontWeight: 800, color: "#f5c842", fontFamily: "'DM Mono', monospace", letterSpacing: "-0.02em", lineHeight: 1 }}>{localTime}</div>
-              {showVenue && <div style={{ fontSize: "11px", color: "#444", fontFamily: "'DM Mono', monospace", marginTop: "2px" }}>{venueTime} local</div>}
+              {showVenue && <div style={{ fontSize: "13px", color: "#838383", fontFamily: "'DM Mono', monospace", marginTop: "2px" }}>{venueTime} local</div>}
             </div>
           )}
         </div>
@@ -178,8 +210,8 @@ function MatchCard({ event, favouriteIds }) {
 
       {/* Footer */}
       <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "10px", paddingTop: "8px", borderTop: "1px solid #181818" }}>
-        <span style={{ fontSize: "11px" }}>{surfaceIcon(ground)}</span>
-        <span style={{ fontSize: "11px", color: "#3a3a3a", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        <span style={{ display: "inline-flex", alignItems: "center" }}><SurfaceIcon groundType={ground} size={14} /></span>
+        <span style={{ fontSize: "13px", color: "#838383", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {event.tournament?.name}{event.roundInfo?.name ? ` · ${event.roundInfo.name}` : ""}
         </span>
         <Badge event={event} />
@@ -261,7 +293,7 @@ function PlayerSearch({ onAdd, existingIds }) {
         )}
       </div>
 
-      {searchErr && <div style={{ fontSize: "11px", color: "#555", marginTop: "5px" }}>{searchErr}</div>}
+      {searchErr && <div style={{ fontSize: "13px", color: "#555", marginTop: "6px" }}>{searchErr}</div>}
 
       {results.length > 0 && (
         <div style={{ background: "#0e0e0e", border: "1px solid #222", borderRadius: "7px", marginTop: "4px", overflow: "hidden" }}>
@@ -272,7 +304,7 @@ function PlayerSearch({ onAdd, existingIds }) {
                 style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", borderBottom: i < results.length - 1 ? "1px solid #181818" : "none" }}>
                 <div>
                   <div style={{ fontSize: "13px", color: "#ccc" }}>{p.name}</div>
-                  {p.country && <div style={{ fontSize: "11px", color: "#3a3a3a" }}>{p.country}</div>}
+                  {p.country && <div style={{ fontSize: "13px", color: "#838383" }}>{p.country}</div>}
                 </div>
                 <button
                   disabled={already}
@@ -280,7 +312,7 @@ function PlayerSearch({ onAdd, existingIds }) {
                   style={{
                     background: already ? "#1a1a1a" : "#f5c842", color: already ? "#333" : "#000",
                     border: "none", borderRadius: "5px", padding: "4px 12px",
-                    fontSize: "12px", fontWeight: 700, cursor: already ? "default" : "pointer",
+                    fontSize: "13px", fontWeight: 700, cursor: already ? "default" : "pointer",
                   }}>
                   {already ? "Added" : "+ Add"}
                 </button>
@@ -392,11 +424,21 @@ export default function CourtCall() {
     <div style={{ minHeight: "100vh", background: "#0c0c0c", color: "#e0e0e0", fontFamily: "'Inter',-apple-system,sans-serif", padding: "24px 16px" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700;800&display=swap');
+        /* Simple CSS reset */
+        html, body { height: 100%; }
+        body { margin: 0; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+        *, *::before, *::after { box-sizing: border-box; }
+        img, svg, video, canvas { display: block; max-width: 100%; }
+        button, input, select, textarea { font: inherit; color: inherit; }
+        button { background: none; border: 0; padding: 0; }
+        a { color: inherit; text-decoration: none; }
+        p, h1, h2, h3, h4, h5, h6 { margin: 0; }
+        ul, ol { margin: 0; padding: 0; list-style: none; }
+        /* End reset */
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes livepulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
         input::placeholder { color: #2e2e2e; }
         input:focus { outline: none !important; border-color: #f5c842 !important; }
-        * { box-sizing: border-box; }
         button { cursor: pointer; transition: opacity 0.15s; }
         button:not(:disabled):hover { opacity: 0.8; }
         ::-webkit-scrollbar { width: 4px; }
@@ -408,22 +450,28 @@ export default function CourtCall() {
         {/* Header */}
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "18px" }}>
           <div>
-            <h1 style={{ margin: 0, fontSize: "24px", fontWeight: 800, letterSpacing: "-0.03em", background: "linear-gradient(90deg,#f5c842,#e07b00)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-              🎾 Baseline
+            <h1 style={{ margin: 0, fontSize: "24px", fontWeight: 800, letterSpacing: "-0.03em" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                <Circle size={32} fill="#e1ea18" stroke="#0c0c0c" strokeWidth={2} aria-hidden="true" />
+                <span>Baseline</span>
+              </span>
             </h1>
-            <p style={{ margin: "3px 0 0", fontSize: "11px", color: "#2e2e2e" }}>
+            <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#838383" }}>
               {lastFetched ? `Cached ${lastFetched.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · ` : ""}
               {USER_TZ_SHORT} time · {favourites.length} player{favourites.length !== 1 ? "s" : ""} tracked
             </p>
           </div>
           <div style={{ display: "flex", gap: "7px" }}>
             <button onClick={fetchEvents} disabled={loading} title="Refresh"
-              style={{ background: "none", border: "1px solid #1c1c1c", borderRadius: "7px", color: "#3a3a3a", padding: "6px 10px", fontSize: "14px" }}>
-              🔄
+              style={{ background: "none", border: "1px solid #1c1c1c", borderRadius: "7px", color: "#838383", padding: "6px 10px", fontSize: "14px" }}>
+              <RefreshCw size={16} aria-hidden="true" />
             </button>
             <button onClick={() => setShowSettings(s => !s)}
-              style={{ background: showSettings ? "#161600" : "none", border: `1px solid ${showSettings ? "#332800" : "#1c1c1c"}`, borderRadius: "7px", color: showSettings ? "#f5c842" : "#3a3a3a", padding: "6px 12px", fontSize: "13px" }}>
-              ⚙️ Settings
+              style={{ background: showSettings ? "#161600" : "none", border: `1px solid ${showSettings ? "#332800" : "#1c1c1c"}`, borderRadius: "7px", color: showSettings ? "#f5c842" : "#838383", padding: "6px 12px", fontSize: "13px" }}>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                <Settings size={16} aria-hidden="true" />
+                <span>Settings</span>
+              </span>
             </button>
           </div>
         </div>
@@ -434,27 +482,31 @@ export default function CourtCall() {
 
             {/* Tracked Players */}
             <div style={{ marginBottom: "16px" }}>
-              <div style={{ fontSize: "11px", fontWeight: 600, color: "#444", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "8px" }}>
+              <div style={{ fontSize: "12px", fontWeight: 600, color: "#838383", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "8px" }}>
                 Tracked Players
               </div>
               {favourites.length > 0 ? (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "10px" }}>
                   {favourites.map(f => (
-                    <span key={f.id} style={{ background: "#151000", border: "1px solid #2a2000", color: "#f5c842", padding: "3px 10px 3px 8px", borderRadius: "5px", fontSize: "12px", display: "flex", alignItems: "center", gap: "5px" }}>
-                      ★ {f.shortName || f.name}
+                    <span key={f.id} style={{ background: "#151000", border: "1px solid #2a2000", color: "#f5c842", padding: "4px 10px 4px 8px", borderRadius: "5px", fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <Star aria-hidden="true" size={14} style={{ color: "#f5c842", fill: "#f5c842" }} />
+                      <span>{f.shortName || f.name}</span>
                       <button onClick={() => setFavourites(fvs => fvs.filter(x => x.id !== f.id))}
-                        style={{ background: "none", border: "none", color: "#444", padding: 0, fontSize: "15px", lineHeight: 1, cursor: "pointer" }}>×</button>
+                        aria-label={`Remove ${f.shortName || f.name}`}
+                        style={{ background: "none", border: "none", color: "#838383", padding: 0, lineHeight: 0, cursor: "pointer", display: "inline-flex", alignItems: "center" }}>
+                        <X size={14} aria-hidden="true" />
+                      </button>
                     </span>
                   ))}
                 </div>
               ) : (
-                <div style={{ fontSize: "12px", color: "#2a2a2a", marginBottom: "10px" }}>No players tracked yet</div>
+                <div style={{ fontSize: "13px", color: "#2a2a2a", marginBottom: "10px" }}>No players tracked yet</div>
               )}
             </div>
 
             {/* Player Search */}
             <div>
-              <div style={{ fontSize: "11px", fontWeight: 600, color: "#444", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "7px" }}>Add Player</div>
+              <div style={{ fontSize: "12px", fontWeight: 600, color: "#838383", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "7px" }}>Add Player</div>
               <PlayerSearch
                 existingIds={favouriteIds}
                 onAdd={player => setFavourites(fvs => [...fvs, player])}
@@ -465,8 +517,11 @@ export default function CourtCall() {
 
         {/* Error */}
         {error && (
-          <div style={{ padding: "9px 13px", background: "#150800", border: "1px solid #2a1200", borderRadius: "8px", color: "#f97316", fontSize: "12px", marginBottom: "12px" }}>
-            ⚠️ {error}
+          <div style={{ padding: "9px 13px", background: "#150800", border: "1px solid #2a1200", borderRadius: "8px", color: "#f97316", fontSize: "13px", marginBottom: "12px" }}>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+              <AlertTriangle size={16} aria-hidden="true" />
+              <span>{error}</span>
+            </span>
           </div>
         )}
 
@@ -474,13 +529,15 @@ export default function CourtCall() {
         {loading ? (
           <div style={{ textAlign: "center", padding: "60px 0" }}>
             <div style={{ width: "26px", height: "26px", border: "3px solid #181818", borderTopColor: "#f5c842", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 10px" }} />
-            <div style={{ fontSize: "12px", color: "#2a2a2a" }}>Loading fixtures…</div>
+            <div style={{ fontSize: "13px", color: "#2a2a2a" }}>Loading fixtures…</div>
           </div>
         ) : visibleDates.length === 0 && !error ? (
           <div style={{ textAlign: "center", padding: "60px 0" }}>
-            <div style={{ fontSize: "30px", marginBottom: "10px" }}>🎾</div>
+            <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "44px", height: "44px", borderRadius: "999px", background: "#151000", border: "1px solid #2a2000", marginBottom: "10px" }}>
+              <Circle size={22} fill="#f5c842" stroke="#0c0c0c" strokeWidth={2} aria-hidden="true" />
+            </div>
             <div style={{ color: "#333", fontSize: "14px" }}>No upcoming matches found</div>
-            <div style={{ color: "#252525", fontSize: "12px", marginTop: "4px" }}>Add players in Settings to track their fixtures</div>
+            <div style={{ color: "#252525", fontSize: "13px", marginTop: "6px" }}>Add players in Settings to track their fixtures</div>
           </div>
         ) : (
           <>
@@ -491,7 +548,7 @@ export default function CourtCall() {
                     {fmtDayLabel(date)}
                   </span>
                   <div style={{ flex: 1, height: "1px", background: "#141414" }} />
-                  <span style={{ fontSize: "11px", color: "#202020" }}>
+                  <span style={{ fontSize: "13px", color: "#202020" }}>
                     {grouped[date].length} match{grouped[date].length !== 1 ? "es" : ""}
                   </span>
                 </div>
@@ -504,14 +561,14 @@ export default function CourtCall() {
 
             {hiddenCount > 0 && (
               <button onClick={() => setShowAll(true)}
-                style={{ width: "100%", padding: "10px", background: "none", border: "1px solid #1c1c1c", borderRadius: "8px", color: "#3a3a3a", fontSize: "12px", marginTop: "4px" }}>
+                style={{ width: "100%", padding: "10px", background: "none", border: "1px solid #1c1c1c", borderRadius: "8px", color: "#838383", fontSize: "13px", marginTop: "4px" }}>
                 Show {hiddenCount} more day{hiddenCount !== 1 ? "s" : ""} this month →
               </button>
             )}
           </>
         )}
 
-        <div style={{ textAlign: "center", marginTop: "36px", color: "#181818", fontSize: "11px" }}>
+        <div style={{ textAlign: "center", marginTop: "36px", color: "#181818", fontSize: "13px" }}>
           Times in {USER_TZ_SHORT} · Data via TennisApi on RapidAPI
         </div>
       </div>

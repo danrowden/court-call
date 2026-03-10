@@ -15,11 +15,11 @@ const USER_TZ = Intl.DateTimeFormat().resolvedOptions().timeZone;
 const USER_TZ_SHORT = USER_TZ.split("/").pop().replace(/_/g, " ");
 
 const SURFACE_COLOR = {
-  hardcourt: "#60a5fa",
-  clay: "#a16207",
-  grass: "#22c55e",
-  carpet: "#e5e7eb",
-  default: "#f5c842",
+  hardcourt: "text-surface-hard",
+  clay: "text-surface-clay",
+  grass: "text-surface-grass",
+  carpet: "text-surface-carpet",
+  default: "text-surface-default",
 };
 
 function SurfaceIcon({ groundType, size = 14 }) {
@@ -30,11 +30,11 @@ function SurfaceIcon({ groundType, size = 14 }) {
     t.includes("grass") ? "grass" :
     t.includes("carpet") ? "carpet" :
     "default";
-  const fill = SURFACE_COLOR[key] || SURFACE_COLOR.default;
+  const colorClass = SURFACE_COLOR[key] || SURFACE_COLOR.default;
   return (
     <Circle
       size={size}
-      style={{ color: fill }}
+      className={colorClass}
       fill="currentColor"
       stroke="#0c0c0c"
       strokeWidth={2}
@@ -118,15 +118,15 @@ function formatScore(event) {
 // ─── Badge ────────────────────────────────────────────────────────────────────
 function Badge({ event, live }) {
   if (live) return (
-    <span style={{ background: "#ef8383834", color: "#fff", fontSize: "12px", fontWeight: 700, padding: "2px 9px", borderRadius: "4px", letterSpacing: "0.06em", animation: "livepulse 1.5s ease-in-out infinite" }}>● LIVE</span>
+    <span className="bg-live text-white text-xs font-bold px-2.5 py-0.5 rounded tracking-wide animate-livepulse">● LIVE</span>
   );
   const cat = event.tournament?.category?.name || event.season?.name || "";
   const pts = event.tournament?.uniqueTournament?.tennisPoints;
   const label = pts ? `${cat} ${pts}` : cat.split(" ")[0];
   const isWTA = /wta/i.test(cat);
   const isITF = /itf/i.test(cat);
-  const [bg, fg] = isWTA ? ["#3a0a1e", "#f472b6"] : isITF ? ["#0a2e1a", "#4ade80"] : ["#0a1e3a", "#60a5fa"];
-  return <span style={{ background: bg, color: fg, fontSize: "12px", fontWeight: 700, padding: "2px 9px", borderRadius: "4px", letterSpacing: "0.06em", textTransform: "uppercase" }}>{label || "ATP"}</span>;
+  const bgClass = isWTA ? "bg-wta-bg text-wta-fg" : isITF ? "bg-itf-bg text-itf-fg" : "bg-atp-bg text-atp-fg";
+  return <span className={`${bgClass} text-xs font-bold px-2.5 py-0.5 rounded tracking-wide uppercase`}>{label || "ATP"}</span>;
 }
 
 // ─── Match Card ───────────────────────────────────────────────────────────────
@@ -148,39 +148,32 @@ function MatchCard({ event, favouriteIds }) {
   const ground = event.groundType || event.tournament?.uniqueTournament?.groundType;
   const winnerHome = event.winnerCode === 1;
   const winnerAway = event.winnerCode === 2;
-  const starStyle = { width: "14px", height: "14px", color: "#f5c842", fill: "#f5c842", flexShrink: 0, transform: "translateY(1px)" };
+
+  const cardBg = isFav
+    ? "bg-gradient-to-br from-card-fav to-card-fav-hover"
+    : "bg-gradient-to-br from-card to-card-hover";
+  const borderColor = isLive ? "border-live" : isFav ? "border-border-fav" : "border-border";
 
   return (
-    <div
-      style={{
-        background: isFav ? "linear-gradient(135deg,#161200,#1a1600)" : "linear-gradient(135deg,#121212,#171717)",
-        border: `1px solid ${isLive ? "#ef8383834" : isFav ? "#332800" : "#1c1c1c"}`,
-        borderRadius: "10px", padding: "14px 18px", marginBottom: "8px",
-        position: "relative", overflow: "hidden",
-        transition: "transform 0.15s",
-        opacity: isDone ? 0.55 : 1,
-      }}>
-      {isLive && <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "2px", background: "#ef8383834", animation: "livepulse 1.5s ease-in-out infinite" }} />}
+    <div className={`${cardBg} ${borderColor} border rounded-[10px] px-[18px] py-3.5 mb-2 relative overflow-hidden transition-transform duration-150 ${isDone ? "opacity-55" : "opacity-100"}`}>
+      {isLive && <div className="absolute top-0 left-0 right-0 h-0.5 bg-live animate-livepulse" />}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "16px" }}>
+      <div className="flex justify-between items-center gap-4">
         {/* Players */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="flex-1 min-w-0">
           {[[p1, p1Fav, winnerHome], [p2, p2Fav, winnerAway]].map(([name, fav, winner], i) => (
-            <div key={i} style={{ display: "flex", alignItems: "baseline", gap: "6px", marginBottom: i === 0 ? "5px" : 0 }}>
-              {fav ? <Star aria-label="tracked" style={starStyle} /> : null}
-              <span style={{
-                fontSize: "14px",
-                fontWeight: fav ? 700 : winner ? 600 : 400,
-                color: fav ? "#f5c842" : winner ? "#e0e0e0" : isDone ? "#555" : "#ccc",
-                fontFamily: "'DM Mono', monospace",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}>
+            <div key={i} className={`flex items-baseline gap-1.5 ${i === 0 ? "mb-[5px]" : ""}`}>
+              {fav ? <Star aria-label="tracked" className="w-3.5 h-3.5 text-accent fill-accent shrink-0 translate-y-px" /> : null}
+              <span className={`text-sm font-mono whitespace-nowrap overflow-hidden text-ellipsis ${
+                fav ? "font-bold text-accent" :
+                winner ? "font-semibold text-text" :
+                isDone ? "font-normal text-text-dim" :
+                "font-normal text-[#ccc]"
+              }`}>
                 {name}
                 {winner && isDone && (
-                  <span style={{ marginLeft: "6px", display: "inline-flex", alignItems: "center" }}>
-                    <Check aria-label="winner" size={14} style={{ color: "#4ade80" }} />
+                  <span className="ml-1.5 inline-flex items-center">
+                    <Check aria-label="winner" size={14} className="text-win" />
                   </span>
                 )}
               </span>
@@ -189,31 +182,30 @@ function MatchCard({ event, favouriteIds }) {
         </div>
 
         {/* Right side: time or score */}
-        <div style={{ textAlign: "right", flexShrink: 0 }}>
+        <div className="text-right shrink-0">
           {isDone && score ? (
             <div>
-              <div style={{ fontSize: "12px", color: "#838383", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "2px" }}>Final</div>
-              <div style={{ fontSize: "14px", fontWeight: 600, color: "#555", fontFamily: "'DM Mono', monospace", whiteSpace: "nowrap" }}>{score}</div>
+              <div className="text-xs text-text-muted uppercase tracking-wide mb-0.5">Final</div>
+              <div className="text-sm font-semibold text-text-dim font-mono whitespace-nowrap">{score}</div>
             </div>
           ) : isLive ? (
-            <div style={{ textAlign: "right" }}>
-              {score && <div style={{ fontSize: "16px", fontWeight: 800, color: "#ef8383834", fontFamily: "'DM Mono', monospace", marginBottom: "4px" }}>{score}</div>}
+            <div className="text-right">
+              {score && <div className="text-base font-extrabold text-live font-mono mb-1">{score}</div>}
               <Badge event={event} live />
             </div>
           ) : (
             <div>
-              {/* <div style={{ fontSize: "12px", color: "#838383", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "2px" }}>{USER_TZ_SHORT}</div> */}
-              <div style={{ fontSize: "22px", fontWeight: 800, color: "#f5c842", fontFamily: "'DM Mono', monospace", letterSpacing: "-0.02em", lineHeight: 1 }}>{localTime}</div>
-              {showVenue && <div style={{ fontSize: "13px", color: "#838383", fontFamily: "'DM Mono', monospace", marginTop: "2px" }}>{venueTime} local</div>}
+              <div className="text-[22px] font-extrabold text-accent font-mono tracking-tight leading-none">{localTime}</div>
+              {showVenue && <div className="text-[13px] text-text-muted font-mono mt-0.5">{venueTime} local</div>}
             </div>
           )}
         </div>
       </div>
 
       {/* Footer */}
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "10px", paddingTop: "8px", borderTop: "1px solid #181818" }}>
-        <span style={{ display: "inline-flex", alignItems: "center" }}><SurfaceIcon groundType={ground} size={14} /></span>
-        <span style={{ fontSize: "13px", color: "#838383", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      <div className="flex items-center gap-2 mt-2.5 pt-2 border-t border-border-dark">
+        <span className="inline-flex items-center"><SurfaceIcon groundType={ground} size={14} /></span>
+        <span className="text-[13px] text-text-muted flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
           {event.tournament?.name}{event.roundInfo?.name ? ` · ${event.roundInfo.name}` : ""}
         </span>
         <Badge event={event} />
@@ -281,41 +273,39 @@ function PlayerSearch({ onAdd, existingIds }) {
 
   return (
     <div>
-      <div style={{ position: "relative" }}>
+      <div className="relative">
         <input
           value={query}
           onChange={e => handleChange(e.target.value)}
           placeholder="Search player name..."
-          style={{ width: "100%", background: "#0a0a0a", border: "1px solid #222", borderRadius: "7px", padding: "9px 12px", color: "#e0e0e0", fontSize: "16px" }}
+          className="w-full bg-input-bg border border-input-border rounded-[7px] px-3 py-2.5 text-text text-base"
         />
         {searching && (
-          <div style={{ position: "absolute", right: "10px", top: "50%", transform: "translateY(-50%)" }}>
-            <div style={{ width: "14px", height: "14px", border: "2px solid #222", borderTopColor: "#f5c842", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+          <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
+            <div className="w-3.5 h-3.5 border-2 border-input-border border-t-accent rounded-full animate-spin" />
           </div>
         )}
       </div>
 
-      {searchErr && <div style={{ fontSize: "13px", color: "#555", marginTop: "6px" }}>{searchErr}</div>}
+      {searchErr && <div className="text-[13px] text-text-dim mt-1.5">{searchErr}</div>}
 
       {results.length > 0 && (
-        <div style={{ background: "#0e0e0e", border: "1px solid #222", borderRadius: "7px", marginTop: "4px", overflow: "hidden" }}>
+        <div className="bg-results-bg border border-input-border rounded-[7px] mt-1 overflow-hidden">
           {results.map((p, i) => {
             const already = existingIds.includes(p.id);
             return (
               <div key={p.id || i}
-                style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "9px 12px", borderBottom: i < results.length - 1 ? "1px solid #181818" : "none" }}>
+                className={`flex items-center justify-between px-3 py-2.5 ${i < results.length - 1 ? "border-b border-border-dark" : ""}`}>
                 <div>
-                  <div style={{ fontSize: "13px", color: "#ccc" }}>{p.name}</div>
-                  {p.country && <div style={{ fontSize: "13px", color: "#838383" }}>{p.country}</div>}
+                  <div className="text-[13px] text-[#ccc]">{p.name}</div>
+                  {p.country && <div className="text-[13px] text-text-muted">{p.country}</div>}
                 </div>
                 <button
                   disabled={already}
                   onClick={() => { onAdd({ id: p.id, name: p.name, shortName: p.shortName }); setQuery(""); setResults([]); }}
-                  style={{
-                    background: already ? "#1a1a1a" : "#f5c842", color: already ? "#333" : "#000",
-                    border: "none", borderRadius: "5px", padding: "4px 12px",
-                    fontSize: "13px", fontWeight: 700, cursor: already ? "default" : "pointer",
-                  }}>
+                  className={`border-none rounded-[5px] px-3 py-1 text-[13px] font-bold ${
+                    already ? "bg-[#1a1a1a] text-text-dimmer cursor-default" : "bg-accent text-black cursor-pointer"
+                  }`}>
                   {already ? "Added" : "+ Add"}
                 </button>
               </div>
@@ -423,51 +413,31 @@ export default function CourtCall() {
   const hiddenCount = allDates.length - visibleDates.length;
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0c0c0c", color: "#e0e0e0", fontFamily: "'Inter',-apple-system,sans-serif", padding: "24px 16px" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700;800&display=swap');
-        /* Simple CSS reset */
-        html, body { height: 100%; }
-        body { margin: 0; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-        *, *::before, *::after { box-sizing: border-box; }
-        img, svg, video, canvas { display: block; max-width: 100%; }
-        button, input, select, textarea { font: inherit; color: inherit; }
-        button { background: none; border: 0; padding: 0; }
-        a { color: inherit; text-decoration: none; }
-        p, h1, h2, h3, h4, h5, h6 { margin: 0; }
-        ul, ol { margin: 0; padding: 0; list-style: none; }
-        /* End reset */
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes livepulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
-        input::placeholder { color: #2e2e2e; }
-        input:focus { outline: none !important; border-color: #f5c842 !important; }
-        button { cursor: pointer; transition: opacity 0.15s; }
-        button:not(:disabled):hover { opacity: 0.8; }
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-thumb { background: #1e1e1e; border-radius: 2px; }
-        svg { flex-shrink: 0; }
-      `}</style>
-
-      <div style={{ maxWidth: "580px", margin: "0 auto" }}>
+    <div className="min-h-screen bg-bg text-text font-sans px-4 py-6">
+      <div className="max-w-[580px] mx-auto">
 
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "8px" }}>
+        <div className="flex items-start justify-between mb-2">
           <div>
-            <h1 style={{ margin: 0, fontSize: "20px", fontWeight: 800, letterSpacing: "-0.03em" }}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+            <h1 className="text-xl font-extrabold tracking-tight">
+              <span className="inline-flex items-center gap-1">
                 <Circle size={24} fill="#e1ea18" stroke="#0c0c0c" strokeWidth={2} aria-hidden="true" />
                 <span>Baseline</span>
               </span>
             </h1>
           </div>
-          <div style={{ display: "flex", gap: "7px", flexShrink: 0 }}>
+          <div className="flex gap-[7px] shrink-0">
             <button onClick={fetchEvents} disabled={loading} title="Refresh"
-              style={{ background: "none", border: "1px solid #1c1c1c", borderRadius: "7px", color: "#838383", padding: "6px 10px", fontSize: "14px" }}>
+              className="border border-border rounded-[7px] text-text-muted px-2.5 py-1.5 text-sm">
               <RefreshCw size={16} aria-hidden="true" />
             </button>
             <button onClick={() => setShowSettings(s => !s)}
-              style={{ background: showSettings ? "#161600" : "none", border: `1px solid ${showSettings ? "#332800" : "#1c1c1c"}`, borderRadius: "7px", color: showSettings ? "#f5c842" : "#838383", padding: "6px 12px", fontSize: "13px" }}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+              className={`border rounded-[7px] px-3 py-1.5 text-[13px] ${
+                showSettings
+                  ? "bg-settings-active-bg border-border-fav text-accent"
+                  : "bg-transparent border-border text-text-muted"
+              }`}>
+              <span className="inline-flex items-center gap-2">
                 <Settings size={16} aria-hidden="true" />
                 <span>Settings</span>
               </span>
@@ -475,42 +445,42 @@ export default function CourtCall() {
           </div>
         </div>
 
-        <p style={{ margin: "4px 0 16px", fontSize: "13px", color: "#838383" }}>
+        <p className="mt-1 mb-4 text-[13px] text-text-muted">
           {lastFetched ? `Cached ${lastFetched.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · ` : ""}
           {USER_TZ_SHORT} time · {favourites.length} player{favourites.length !== 1 ? "s" : ""} tracked
         </p>
 
         {/* Settings */}
         {showSettings && (
-          <div style={{ background: "#0f0f0f", border: "1px solid #1c1c1c", borderRadius: "10px", padding: "18px", marginBottom: "16px" }}>
+          <div className="bg-settings-bg border border-border rounded-[10px] p-[18px] mb-4">
 
             {/* Tracked Players */}
-            <div style={{ marginBottom: "16px" }}>
-              <div style={{ fontSize: "12px", fontWeight: 600, color: "#838383", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "8px" }}>
+            <div className="mb-4">
+              <div className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">
                 Tracked Players
               </div>
               {favourites.length > 0 ? (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "10px" }}>
+                <div className="flex flex-wrap gap-1.5 mb-2.5">
                   {favourites.map(f => (
-                    <span key={f.id} style={{ background: "#151000", border: "1px solid #2a2000", color: "#f5c842", padding: "4px 10px 4px 8px", borderRadius: "5px", fontSize: "13px", display: "flex", alignItems: "center", gap: "6px" }}>
-                      <Star aria-hidden="true" size={14} style={{ color: "#f5c842", fill: "#f5c842" }} />
+                    <span key={f.id} className="bg-fav-chip-bg border border-fav-chip-border text-accent pl-2 pr-2.5 py-1 rounded-[5px] text-[13px] flex items-center gap-1.5">
+                      <Star aria-hidden="true" size={14} className="text-accent fill-accent" />
                       <span>{f.shortName || f.name}</span>
                       <button onClick={() => setFavourites(fvs => fvs.filter(x => x.id !== f.id))}
                         aria-label={`Remove ${f.shortName || f.name}`}
-                        style={{ background: "none", border: "none", color: "#838383", padding: 0, lineHeight: 0, cursor: "pointer", display: "inline-flex", alignItems: "center" }}>
+                        className="text-text-muted p-0 leading-none inline-flex items-center">
                         <X size={14} aria-hidden="true" />
                       </button>
                     </span>
                   ))}
                 </div>
               ) : (
-                <div style={{ fontSize: "13px", color: "#2a2a2a", marginBottom: "10px" }}>No players tracked yet</div>
+                <div className="text-[13px] text-text-dark mb-2.5">No players tracked yet</div>
               )}
             </div>
 
             {/* Player Search */}
             <div>
-              <div style={{ fontSize: "12px", fontWeight: 600, color: "#838383", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: "7px" }}>Add Player</div>
+              <div className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-[7px]">Add Player</div>
               <PlayerSearch
                 existingIds={favouriteIds}
                 onAdd={player => setFavourites(fvs => [...fvs, player])}
@@ -521,8 +491,8 @@ export default function CourtCall() {
 
         {/* Error */}
         {error && (
-          <div style={{ padding: "9px 13px", background: "#150800", border: "1px solid #2a1200", borderRadius: "8px", color: "#f97316", fontSize: "13px", marginBottom: "12px" }}>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+          <div className="px-[13px] py-2.5 bg-error-bg border border-error-border rounded-lg text-error-text text-[13px] mb-3">
+            <span className="inline-flex items-center gap-2">
               <AlertTriangle size={16} aria-hidden="true" />
               <span>{error}</span>
             </span>
@@ -531,28 +501,28 @@ export default function CourtCall() {
 
         {/* Loading */}
         {loading ? (
-          <div style={{ textAlign: "center", padding: "60px 0" }}>
-            <div style={{ width: "26px", height: "26px", border: "3px solid #181818", borderTopColor: "#f5c842", borderRadius: "50%", animation: "spin 0.7s linear infinite", margin: "0 auto 10px" }} />
-            <div style={{ fontSize: "13px", color: "#838383" }}>Loading matches...</div>
+          <div className="text-center py-15">
+            <div className="w-[26px] h-[26px] border-3 border-border-dark border-t-accent rounded-full animate-spin mx-auto mb-2.5" />
+            <div className="text-[13px] text-text-muted">Loading matches...</div>
           </div>
         ) : visibleDates.length === 0 && !error ? (
-          <div style={{ textAlign: "center", padding: "60px 0" }}>
-            <div style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "44px", height: "44px", borderRadius: "999px", background: "#151000", border: "1px solid #2a2000", marginBottom: "10px" }}>
+          <div className="text-center py-15">
+            <div className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-fav-chip-bg border border-fav-chip-border mb-2.5">
               <Circle size={22} fill="#f5c842" stroke="#0c0c0c" strokeWidth={2} aria-hidden="true" />
             </div>
-            <div style={{ color: "#333", fontSize: "14px" }}>No upcoming matches found</div>
-            <div style={{ color: "#252525", fontSize: "13px", marginTop: "6px" }}>Add players in Settings to track their fixtures</div>
+            <div className="text-text-dimmer text-sm">No upcoming matches found</div>
+            <div className="text-text-darkest text-[13px] mt-1.5">Add players in Settings to track their fixtures</div>
           </div>
         ) : (
           <>
             {visibleDates.map(date => (
-              <div key={date} style={{ marginBottom: "22px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
-                  <span style={{ fontSize: date === todayKey() ? "16px" : "13px", fontWeight: 700, color: date === todayKey() ? "#f5c842" : "#2e2e2e" }}>
+              <div key={date} className="mb-[22px]">
+                <div className="flex items-center gap-2.5 mb-2.5">
+                  <span className={`font-bold ${date === todayKey() ? "text-base text-accent" : "text-[13px] text-text-dimmest"}`}>
                     {fmtDayLabel(date)}
                   </span>
-                  <div style={{ flex: 1, height: "1px", background: "#141414" }} />
-                  <span style={{ fontSize: "13px", color: "#202020" }}>
+                  <div className="flex-1 h-px bg-divider" />
+                  <span className="text-[13px] text-text-section">
                     {grouped[date].length} match{grouped[date].length !== 1 ? "es" : ""}
                   </span>
                 </div>
@@ -565,20 +535,20 @@ export default function CourtCall() {
 
             {hiddenCount > 0 && (
               <button onClick={() => setShowAll(true)}
-                style={{ width: "100%", padding: "10px", background: "none", border: "1px solid #1c1c1c", borderRadius: "8px", color: "#838383", fontSize: "13px", marginTop: "4px" }}>
+                className="w-full p-2.5 border border-border rounded-lg text-text-muted text-[13px] mt-1">
                 Show {hiddenCount} more day{hiddenCount !== 1 ? "s" : ""} this month →
               </button>
             )}
           </>
         )}
 
-        <div style={{ textAlign: "center", marginTop: "36px", color: "#838383", fontSize: "13px" }}>
-           <span style={{display: "inline-flex", alignItems: "center", gap: "4px"}}>
+        <div className="text-center mt-9 text-text-muted text-[13px]">
+           <span className="inline-flex items-center gap-1">
              <Globe size={15} stroke="#555" aria-hidden="true" />
              {USER_TZ}
            </span>
         </div>
-        <div style={{ textAlign: "center", marginTop: "8px", color: "#838383", fontSize: "13px" }}>
+        <div className="text-center mt-2 text-text-muted text-[13px]">
           Tennis player tracker · By <a href="https://x.com/dr" target="_blank" rel="noopener noreferrer">@dr</a>
         </div>
       </div>

@@ -159,7 +159,7 @@ function MatchCard({ event, favouriteIds }) {
   const borderColor = isLive ? "border-live" : isFav ? "border-border-fav" : "border-border";
 
   return (
-    <div className={`${cardBg} ${borderColor} border rounded-[10px] px-[18px] py-3.5 mb-2 relative overflow-hidden transition-transform duration-150 ${isDone ? "opacity-55" : "opacity-100"}`}>
+    <div className={`${cardBg} ${borderColor} border rounded-[10px] p-3 sm:p-4 mb-2 relative overflow-hidden transition-transform duration-150 ${isDone ? "opacity-55" : "opacity-100"}`}>
       {isLive && <div className="absolute top-0 left-0 right-0 h-0.5 bg-live animate-livepulse" />}
 
       <div className="flex justify-between items-center gap-4">
@@ -199,7 +199,7 @@ function MatchCard({ event, favouriteIds }) {
             </div>
           ) : (
             <div>
-              <div className="text-[22px] font-extrabold text-accent font-mono tracking-tight leading-none">{localTime}</div>
+              <div className="text-[22px] font-extrabold font-mono tracking-tight leading-none">{localTime}</div>
               {showVenue && <div className="text-[13px] text-text-muted font-mono mt-0.5">{venueTime} local</div>}
             </div>
           )}
@@ -207,7 +207,7 @@ function MatchCard({ event, favouriteIds }) {
       </div>
 
       {/* Footer */}
-      <div className="flex items-center gap-2 mt-2.5 pt-2 border-t border-border-dark">
+      <div className="flex items-center gap-2 mt-3">
         <span className="inline-flex items-center"><SurfaceIcon groundType={ground} size={14} /></span>
         <span className="text-[13px] text-text-muted flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
           {event.tournament?.name}{event.roundInfo?.name ? ` · ${event.roundInfo.name}` : ""}
@@ -495,7 +495,7 @@ export default function CourtCall() {
   const hiddenCount = allDates.length - visibleDates.length;
 
   return (
-    <div className="min-h-screen bg-bg text-text font-sans px-4 py-6">
+    <div className="min-h-screen bg-bg text-text font-sans p-4">
       <div className="max-w-[580px] mx-auto">
 
         {/* Header */}
@@ -508,24 +508,24 @@ export default function CourtCall() {
               </span>
             </h1>
           </div>
-          <div className="flex gap-[7px] shrink-0">
+          <div className="flex gap-2 shrink-0 items-center">
+            <span className="text-[13px] text-text-muted">
+              {lastFetched ? `Updated ${lastFetched.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}` : ""}
+            </span>
             <button
               onClick={() => view === "rankings" ? fetchRankingsData(rankingsCategory) : fetchEvents()}
               disabled={loading || rankingsLoading}
               title="Refresh"
-              className="border border-border rounded-[7px] text-text-muted px-2.5 py-1.5 text-sm">
+              className="border border-border rounded-[7px] text-text-muted p-2 text-sm">
               <RefreshCw size={16} aria-hidden="true" />
             </button>
             <button onClick={() => setShowSettings(s => !s)}
-              className={`border rounded-[7px] px-3 py-1.5 text-[13px] ${
+              className={`border rounded-[7px] p-2 text-[13px] ${
                 showSettings
                   ? "bg-settings-active-bg border-border-fav text-accent"
                   : "bg-transparent border-border text-text-muted"
               }`}>
-              <span className="inline-flex items-center gap-2">
                 <Settings size={16} aria-hidden="true" />
-                <span>Settings</span>
-              </span>
             </button>
           </div>
         </div>
@@ -548,9 +548,8 @@ export default function CourtCall() {
               Rankings
             </button>
           </div>
-          <p className="text-[13px] text-text-muted">
-            {lastFetched ? `Updated ${lastFetched.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · ` : ""}
-            {USER_TZ_SHORT} · {favourites.length} tracked
+          <p className="text-sm text-text-muted flex items-center gap-1">
+            {/* {USER_TZ_SHORT} · {favourites.length} <Star aria-label="tracked" className="inline w-3.5 h-3.5 text-accent fill-accent shrink-0 translate-y-px" /> */}
           </p>
         </div>
 
@@ -726,12 +725,12 @@ export default function CourtCall() {
                               className="shrink-0 p-0 leading-none">
                               <Star size={13} className={isFav ? "text-accent fill-accent" : "text-text-darkest"} />
                             </button>
-                            <span className={`text-sm truncate ${isFav ? "font-bold text-accent" : "font-medium text-text"}`}>{r.player_name}</span>
+                            <span className={`text-sm truncate font-mono ${isFav ? "font-bold text-accent" : "font-medium text-text"}`}>{r.player_name}</span>
                           </div>
-                          <div className="text-[13px] text-text-muted">
+                          <div className="text-sm text-text-muted truncate">
                             {r.country && <span>{r.country}</span>}
                             {r.country && r.next_win_points != null && <span> · </span>}
-                            {r.next_win_points != null && <span>Next win: {r.next_win_points.toLocaleString()} pts</span>}
+                            {r.next_win_points != null && <span className="text-text">Next <b>{r.next_win_points.toLocaleString()}</b> pts</span>}
                           </div>
                         </div>
                         <div className="text-right shrink-0 flex flex-col">
@@ -796,11 +795,11 @@ export default function CourtCall() {
               {visibleDates.map(date => (
                 <div key={date} className="mb-[22px]">
                   <div className="flex items-center gap-2.5 mb-2.5">
-                    <span className={`font-bold ${date === todayKey() ? "text-base text-accent" : "text-[13px] text-text-dimmest"}`}>
+                    <span className={`font-bold ${date === todayKey() ? "text-base" : "text-text-muted"}`}>
                       {fmtDayLabel(date)}
                     </span>
                     <div className="flex-1 h-px bg-divider" />
-                    <span className="text-[13px] text-text-section">
+                    <span className="text-sm text-text-dim">
                       {grouped[date].length} match{grouped[date].length !== 1 ? "es" : ""}
                     </span>
                   </div>

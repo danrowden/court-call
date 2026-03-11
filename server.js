@@ -713,15 +713,32 @@ app.get('/api/events', async (req, res) => {
     }
 
     const { rows } = await pool.query(
-      `SELECT raw_json FROM events
-       WHERE start_timestamp > $1
-         AND (home_team_id = ANY($2) OR away_team_id = ANY($2))
-       ORDER BY start_timestamp ASC`,
+      `SELECT
+         e.raw_json,
+         ph.ranking AS home_ranking,
+         pa.ranking AS away_ranking
+       FROM events e
+       LEFT JOIN players ph ON ph.id = e.home_team_id
+       LEFT JOIN players pa ON pa.id = e.away_team_id
+       WHERE e.start_timestamp > $1
+         AND (e.home_team_id = ANY($2) OR e.away_team_id = ANY($2))
+       ORDER BY e.start_timestamp ASC`,
       [cutoff, playerIds]
     )
 
+    const events = rows.map(r => {
+      const ev = r.raw_json || {}
+      if (ev.homeTeam && r.home_ranking != null) {
+        ev.homeTeam = { ...ev.homeTeam, ranking: r.home_ranking }
+      }
+      if (ev.awayTeam && r.away_ranking != null) {
+        ev.awayTeam = { ...ev.awayTeam, ranking: r.away_ranking }
+      }
+      return ev
+    })
+
     res.json({
-      events: rows.map(r => r.raw_json),
+      events,
       cachedAt: new Date().toISOString(),
     })
   } catch (err) {

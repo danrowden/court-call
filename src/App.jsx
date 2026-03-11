@@ -139,6 +139,8 @@ function MatchCard({ event, favouriteIds }) {
   const isDone = event.status?.type === "finished";
   const p1 = event.homeTeam?.name || "TBD";
   const p2 = event.awayTeam?.name || "TBD";
+  const p1Rank = event.homeTeam?.ranking;
+  const p2Rank = event.awayTeam?.ranking;
   const p1Fav = favouriteIds.includes(event.homeTeam?.id);
   const p2Fav = favouriteIds.includes(event.awayTeam?.id);
   const isFav = p1Fav || p2Fav;
@@ -165,7 +167,7 @@ function MatchCard({ event, favouriteIds }) {
       <div className="flex justify-between items-center gap-4">
         {/* Players */}
         <div className="flex-1 min-w-0">
-          {[[p1, p1Fav, winnerHome], [p2, p2Fav, winnerAway]].map(([name, fav, winner], i) => (
+          {[[p1, p1Fav, winnerHome, p1Rank], [p2, p2Fav, winnerAway, p2Rank]].map(([name, fav, winner, rank], i) => (
             <div key={i} className={`flex items-baseline gap-1.5 ${i === 0 ? "mb-[5px]" : ""}`}>
               {fav ? <Star aria-label="tracked" className="w-3.5 h-3.5 text-accent fill-accent shrink-0 translate-y-px" /> : null}
               <span className={`text-sm font-mono whitespace-nowrap overflow-hidden text-ellipsis ${
@@ -175,6 +177,9 @@ function MatchCard({ event, favouriteIds }) {
                 "font-normal text-[#ccc]"
               }`}>
                 {name}
+                {rank != null && (
+                  <span className="text-[11px] text-text-muted ml-1.5 font-mono font-normal">{rank}</span>
+                )}
                 {winner && isDone && (
                   <span className="ml-1.5 inline-flex items-center">
                     <Check aria-label="winner" size={14} className="text-win" />

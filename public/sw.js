@@ -1,21 +1,9 @@
-const CACHE_NAME = 'baseline-v1'
+const CACHE_NAME = 'baseline-v2'
 
-// Cache the app shell on install
-self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) =>
-      cache.addAll([
-        '/',
-        '/index.html',
-        '/manifest.json',
-        '/app-icon.png',
-      ])
-    )
-  )
-  self.skipWaiting()
-})
+// On install, skip waiting so the new SW activates immediately
+self.addEventListener('install', () => self.skipWaiting())
 
-// Clean up old caches on activate
+// On activate, clear old caches and take control of all clients
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
@@ -25,33 +13,18 @@ self.addEventListener('activate', (event) => {
   self.clients.claim()
 })
 
-// Network-first for API calls, cache-first for static assets
+// Network-first for everything: always try fresh, fall back to cache for offline
 self.addEventListener('fetch', (event) => {
-  const { request } = event
-  const url = new URL(request.url)
-
-  // API calls: always try network first, fall back to cache
-  if (url.pathname.startsWith('/api/')) {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const clone = response.clone()
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone))
-          return response
-        })
-        .catch(() => caches.match(request))
-    )
-    return
-  }
-
-  // Static assets: try cache first, fall back to network
   event.respondWith(
-    caches.match(request).then((cached) =>
-      cached || fetch(request).then((response) => {
-        const clone = response.clone()
-        caches.open(CACHE_NAME).then((cache) => cache.put(request, clone))
+    fetch(event.request)
+      .then((response) => {
+        // Cache successful GET responses for offline fallback
+        if (event.request.method === 'GET' && response.status === 200) {
+          const clone = response.clone()
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone))
+        }
         return response
       })
-    )
+      .catch(() => caches.match(event.request))
   )
 })

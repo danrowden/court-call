@@ -15,6 +15,9 @@ self.addEventListener('activate', (event) => {
 
 // Network-first for everything: always try fresh, fall back to cache for offline
 self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url)
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {

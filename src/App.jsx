@@ -491,7 +491,7 @@ export default function CourtCall() {
         </div>
 
         <p className="mt-1 mb-4 text-[13px] text-text-muted">
-          {lastFetched ? `Cached ${lastFetched.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · ` : ""}
+          {lastFetched ? `Updated ${lastFetched.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · ` : ""}
           {USER_TZ_SHORT} time · {favourites.length} player{favourites.length !== 1 ? "s" : ""} tracked
         </p>
 

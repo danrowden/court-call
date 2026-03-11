@@ -430,14 +430,29 @@ app.put('/api/favourites', authMiddleware, async (req, res) => {
 
 // ─── API Endpoints ───────────────────────────────────────────────────────────
 
-// Return all cached events (client filters by favourites)
+// Return cached events, filtered by player IDs if provided
 app.get('/api/events', async (req, res) => {
   try {
     const cutoff = Math.floor(Date.now() / 1000) - 7200 // include matches from last 2 hours
+
+    // Parse ?players=123,456,789 — required, returns empty without it
+    const playerIds = (req.query.players || '')
+      .split(',')
+      .map(s => parseInt(s.trim(), 10))
+      .filter(n => Number.isFinite(n))
+
+    if (playerIds.length === 0) {
+      return res.json({ events: [], cachedAt: new Date().toISOString() })
+    }
+
     const { rows } = await pool.query(
-      'SELECT raw_json FROM events WHERE start_timestamp > $1 ORDER BY start_timestamp ASC',
-      [cutoff]
+      `SELECT raw_json FROM events
+       WHERE start_timestamp > $1
+         AND (home_team_id = ANY($2) OR away_team_id = ANY($2))
+       ORDER BY start_timestamp ASC`,
+      [cutoff, playerIds]
     )
+
     res.json({
       events: rows.map(r => r.raw_json),
       cachedAt: new Date().toISOString(),

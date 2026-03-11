@@ -423,35 +423,28 @@ export default function CourtCall() {
 
   const favouriteIds = favourites.map(f => f.id);
 
-  const filterEvents = useCallback((all) => {
-    const nowTs = Date.now() / 1000 - 7200;
-    return all.filter(e => {
-      if (!e.startTimestamp || e.startTimestamp < nowTs) return false;
-      if (!favouriteIds.length) return true;
-      return favouriteIds.includes(e.homeTeam?.id) || favouriteIds.includes(e.awayTeam?.id);
-    });
-  }, [favouriteIds]);
-
-  const fetchEvents = useCallback(async () => {
+  const fetchEvents = useCallback(async (playerIds = favouriteIds) => {
+    if (playerIds.length === 0) {
+      setEvents([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true); setError("");
     try {
-      const res = await fetch("/api/events");
+      const res = await fetch(`/api/events?players=${playerIds.join(",")}`);
       const data = await res.json();
       setEvents(data.events || []);
       setLastFetched(data.cachedAt ? new Date(data.cachedAt) : new Date());
-      if (!data.events?.length) {
-        setError("No events cached yet. The server may still be fetching data.");
-      }
     } catch {
       setError("Could not load events from server.");
     }
     setLoading(false);
-  }, []);
+  }, [favouriteIds]);
 
-  useEffect(() => { fetchEvents(); }, []);
+  // Fetch on mount and re-fetch when favourites change
+  useEffect(() => { fetchEvents(); }, [favouriteIds.join(",")]);
 
-  // Filter events by favourites in render path (reactive to favourite changes)
-  const filteredEvents = filterEvents(events);
+  const filteredEvents = events;
 
   const grouped = filteredEvents.reduce((acc, e) => {
     const d = tsToDateKey(e.startTimestamp);
@@ -639,8 +632,8 @@ export default function CourtCall() {
             <div className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-fav-chip-bg border border-fav-chip-border mb-2.5">
               <Circle size={22} fill="#f5c842" stroke="#0c0c0c" strokeWidth={2} aria-hidden="true" />
             </div>
-            <div className="text-text-dimmer text-sm">No upcoming matches found</div>
-            <div className="text-text-darkest text-[13px] mt-1.5">Add players in Settings to track their fixtures</div>
+            <div className="text-text-dimmer text-sm">{favouriteIds.length === 0 ? "No players tracked" : "No upcoming matches found"}</div>
+            <div className="text-text-darkest text-[13px] mt-1.5">{favouriteIds.length === 0 ? "Add players in Settings to see their matches" : "Check back later for new fixtures"}</div>
           </div>
         ) : (
           <>

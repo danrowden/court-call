@@ -695,7 +695,18 @@ export default function CourtCall() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
-                            {isFav && <Star size={13} className="text-accent fill-accent shrink-0" />}
+                            <button
+                              onClick={() => {
+                                if (isFav) {
+                                  setFavourites(fvs => fvs.filter(x => x.id !== r.player_id));
+                                } else {
+                                  setFavourites(fvs => [...fvs, { id: r.player_id, name: r.player_name }]);
+                                }
+                              }}
+                              aria-label={isFav ? `Untrack ${r.player_name}` : `Track ${r.player_name}`}
+                              className="shrink-0 p-0 leading-none">
+                              <Star size={13} className={isFav ? "text-accent fill-accent" : "text-text-darkest"} />
+                            </button>
                             <span className={`text-sm truncate ${isFav ? "font-bold text-accent" : "font-medium text-text"}`}>{r.player_name}</span>
                           </div>
                           <div className="text-[13px] text-text-muted">

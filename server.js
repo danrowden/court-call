@@ -81,6 +81,29 @@ async function initDb() {
   `)
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_players_name ON players(LOWER(name))`)
 
+  // Add cached ranking columns to players (idempotent)
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS ranking INTEGER`)
+  await pool.query(`ALTER TABLE players ADD COLUMN IF NOT EXISTS ranking_points INTEGER`)
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS rankings (
+      player_id       INTEGER NOT NULL,
+      ranking         INTEGER NOT NULL,
+      points          INTEGER,
+      previous_ranking INTEGER,
+      best_ranking    INTEGER,
+      category        TEXT NOT NULL DEFAULT 'atp',
+      fetched_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (player_id, category)
+    )
+  `)
+  await pool.query(`ALTER TABLE rankings ADD COLUMN IF NOT EXISTS next_win_points INTEGER`)
+  await pool.query(`ALTER TABLE rankings ADD COLUMN IF NOT EXISTS max_points INTEGER`)
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_rankings_ranking ON rankings(ranking)`)
+
+  // One-time cleanup: clear country values that are actually player names (from earlier bug where rowName was used)
+  await pool.query(`UPDATE players SET country = NULL WHERE country IS NOT NULL AND country = name`)
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id          SERIAL PRIMARY KEY,
@@ -155,7 +178,6 @@ async function fetchCalendar() {
           events: [],
         }
       }
-      console.log(`${data.length} matches found`);
       return {
         ok: true,
         status: res.status,
@@ -266,6 +288,86 @@ async function fetchCalendar() {
     )
   } catch (err) {
     console.warn('Calendar fetch skipped:', err?.message || String(err))
+  }
+}
+
+// ─── Rankings Fetch ──────────────────────────────────────────────────────────
+
+const RANKINGS_FETCH_INTERVAL = 60 * 60 * 1000 // 1 hour
+
+async function fetchRankings() {
+  if (!RAPIDAPI_KEY) return
+  console.log('Fetching ATP live rankings...')
+
+  try {
+    const res = await fetch(`https://${HOST}/api/tennis/rankings/atp/live`, {
+      headers: { 'x-rapidapi-host': HOST, 'x-rapidapi-key': RAPIDAPI_KEY },
+    })
+
+    let data = null
+    try { data = await res.json() } catch { /* non-JSON */ }
+
+    if (!res.ok) {
+      const msg = data?.message || data?.error || `HTTP ${res.status}`
+      console.warn(`Rankings fetch failed: ${msg}`)
+      return
+    }
+
+    if (data?.message) {
+      console.warn(`Rankings fetch error: ${data.message}`)
+      return
+    }
+
+    const rankings = data?.rankings || data || []
+    if (!Array.isArray(rankings) || rankings.length === 0) {
+      console.warn('Rankings fetch: no rankings data found')
+      return
+    }
+
+    let count = 0
+    for (const entry of rankings) {
+      const playerId = entry.team?.id || entry.player?.id
+      if (!playerId) continue
+
+      const rank = entry.ranking
+      const points = entry.points ?? null
+      const previousRanking = entry.previousRanking ?? null
+      const bestRanking = entry.bestRanking ?? null
+      const nextWinPoints = entry.nextWinPoints ?? null
+      const maxPoints = entry.maxPoints ?? null
+
+      // Ensure player exists in players table (rankings may include players with no recent matches)
+      const playerName = entry.team?.name || entry.player?.name || `Player ${playerId}`
+      const playerShort = entry.team?.shortName || entry.player?.shortName || null
+      const playerCountry = entry.team?.country?.name || entry.country?.name || null
+      await pool.query(`
+        INSERT INTO players (id, name, short_name, country, seen_at)
+        VALUES ($1, $2, $3, $4, EXTRACT(EPOCH FROM NOW())::INTEGER)
+        ON CONFLICT (id) DO UPDATE SET
+          short_name = COALESCE(NULLIF($3, ''), players.short_name),
+          country = COALESCE($4, players.country),
+          seen_at = EXTRACT(EPOCH FROM NOW())::INTEGER
+      `, [playerId, playerName, playerShort, playerCountry])
+
+      // Upsert into rankings table
+      await pool.query(`
+        INSERT INTO rankings (player_id, ranking, points, previous_ranking, best_ranking, next_win_points, max_points, category, fetched_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'atp', NOW())
+        ON CONFLICT (player_id, category) DO UPDATE SET
+          ranking = $2, points = $3, previous_ranking = $4, best_ranking = $5, next_win_points = $6, max_points = $7, fetched_at = NOW()
+      `, [playerId, rank, points, previousRanking, bestRanking, nextWinPoints, maxPoints])
+
+      // Cache rank+points on players table
+      await pool.query(`
+        UPDATE players SET ranking = $1, ranking_points = $2 WHERE id = $3
+      `, [rank, points, playerId])
+
+      count++
+    }
+
+    console.log(`Stored ${count} ATP rankings`)
+  } catch (err) {
+    console.warn('Rankings fetch skipped:', err?.message || String(err))
   }
 }
 
@@ -463,6 +565,36 @@ app.get('/api/events', async (req, res) => {
   }
 })
 
+// Return paginated ATP rankings (top N with offset)
+app.get('/api/rankings', async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit) || 50, 1), 200)
+    const offset = Math.max(parseInt(req.query.offset) || 0, 0)
+
+    const { rows } = await pool.query(`
+      SELECT r.player_id, r.ranking, r.points, r.previous_ranking, r.best_ranking,
+             r.next_win_points, r.category, r.fetched_at,
+             p.name AS player_name, p.country
+      FROM rankings r
+      JOIN players p ON p.id = r.player_id
+      WHERE r.category = 'atp'
+      ORDER BY r.ranking ASC
+      LIMIT $1 OFFSET $2
+    `, [limit, offset])
+
+    // Check if there are more rows beyond this page (same join as main query)
+    const countResult = await pool.query(
+      `SELECT COUNT(*) AS total FROM rankings r JOIN players p ON p.id = r.player_id WHERE r.category = 'atp'`
+    )
+    const total = parseInt(countResult.rows[0].total)
+
+    res.json({ rankings: rows, total, hasMore: offset + limit < total })
+  } catch (err) {
+    console.error('GET /api/rankings error:', err)
+    res.status(500).json({ error: 'Failed to load rankings' })
+  }
+})
+
 // Return all known players for client-side autocomplete
 app.get('/api/players', async (req, res) => {
   try {
@@ -610,8 +742,10 @@ async function start() {
   if (RAPIDAPI_KEY) {
     fetchCalendar()
     setInterval(fetchCalendar, FETCH_INTERVAL)
+    fetchRankings()
+    setInterval(fetchRankings, RANKINGS_FETCH_INTERVAL)
   } else {
-    console.warn('WARNING: RAPIDAPI_KEY not set. Calendar fetch disabled.')
+    console.warn('WARNING: RAPIDAPI_KEY not set. Calendar and rankings fetch disabled.')
   }
 
   const server = app.listen(PORT, () => {

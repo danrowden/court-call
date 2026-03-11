@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import {
   AlertTriangle,
   Check,
+  ChevronDown,
+  ChevronUp,
   Circle,
   LogOut,
   Mail,
@@ -373,6 +375,15 @@ export default function CourtCall() {
   const [showAll, setShowAll] = useState(false);
   const [lastFetched, setLastFetched] = useState(null);
 
+  // View toggle: "matches" or "rankings"
+  const [view, setView] = useState("matches");
+
+  // Rankings state
+  const [rankings, setRankings] = useState([]);
+  const [rankingsLoading, setRankingsLoading] = useState(false);
+  const [rankingsHasMore, setRankingsHasMore] = useState(false);
+  const [rankingsTotal, setRankingsTotal] = useState(0);
+
   // Auth state
   const [user, setUser] = useState(null);         // { email, favourites } or null
   const [authLoading, setAuthLoading] = useState(false);
@@ -444,6 +455,27 @@ export default function CourtCall() {
   // Fetch on mount and re-fetch when favourites change
   useEffect(() => { fetchEvents(); }, [favouriteIds.join(",")]);
 
+  const fetchRankingsData = useCallback(async (loadMore = false) => {
+    setRankingsLoading(true);
+    try {
+      const offset = loadMore ? rankings.length : 0;
+      const res = await fetch(`/api/rankings?limit=50&offset=${offset}`);
+      const data = await res.json();
+      const rows = data.rankings || [];
+      setRankings(prev => loadMore ? [...prev, ...rows] : rows);
+      setRankingsHasMore(data.hasMore ?? false);
+      setRankingsTotal(data.total ?? 0);
+    } catch { /* silently fail */ }
+    setRankingsLoading(false);
+  }, [rankings.length]);
+
+  // Fetch rankings when switching to rankings view
+  const prevView = useRef(view);
+  useEffect(() => {
+    if (view === "rankings" && prevView.current !== "rankings") fetchRankingsData();
+    prevView.current = view;
+  }, [view]);
+
   const filteredEvents = events;
 
   const grouped = filteredEvents.reduce((acc, e) => {
@@ -472,7 +504,10 @@ export default function CourtCall() {
             </h1>
           </div>
           <div className="flex gap-[7px] shrink-0">
-            <button onClick={() => fetchEvents()} disabled={loading} title="Refresh"
+            <button
+              onClick={() => view === "rankings" ? fetchRankingsData() : fetchEvents()}
+              disabled={loading || rankingsLoading}
+              title="Refresh"
               className="border border-border rounded-[7px] text-text-muted px-2.5 py-1.5 text-sm">
               <RefreshCw size={16} aria-hidden="true" />
             </button>
@@ -490,10 +525,29 @@ export default function CourtCall() {
           </div>
         </div>
 
-        <p className="mt-1 mb-4 text-[13px] text-text-muted">
-          {lastFetched ? `Updated ${lastFetched.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · ` : ""}
-          {USER_TZ_SHORT} time · {favourites.length} player{favourites.length !== 1 ? "s" : ""} tracked
-        </p>
+        {/* View toggle + meta */}
+        <div className="flex items-center justify-between mt-1 mb-4">
+          <div className="flex bg-card border border-border rounded-lg overflow-hidden">
+            <button
+              onClick={() => setView("matches")}
+              className={`px-3 py-1 text-[13px] font-semibold ${
+                view === "matches" ? "bg-settings-active-bg text-accent" : "text-text-muted"
+              }`}>
+              Matches
+            </button>
+            <button
+              onClick={() => setView("rankings")}
+              className={`px-3 py-1 text-[13px] font-semibold ${
+                view === "rankings" ? "bg-settings-active-bg text-accent" : "text-text-muted"
+              }`}>
+              Rankings
+            </button>
+          </div>
+          <p className="text-[13px] text-text-muted">
+            {lastFetched ? `Updated ${lastFetched.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })} · ` : ""}
+            {USER_TZ_SHORT} · {favourites.length} tracked
+          </p>
+        </div>
 
         {/* Settings */}
         {showSettings && (
@@ -611,58 +665,131 @@ export default function CourtCall() {
           </div>
         )}
 
-        {/* Error */}
-        {error && (
-          <div className="px-[13px] py-2.5 bg-error-bg border border-error-border rounded-lg text-error-text text-[13px] mb-3">
-            <span className="inline-flex items-center gap-2">
-              <AlertTriangle size={16} aria-hidden="true" />
-              <span>{error}</span>
-            </span>
-          </div>
-        )}
-
-        {/* Loading */}
-        {loading ? (
-          <div className="text-center py-15">
-            <div className="w-[26px] h-[26px] border-3 border-border-dark border-t-accent rounded-full animate-spin mx-auto mb-2.5" />
-            <div className="text-[13px] text-text-muted">Loading matches...</div>
-          </div>
-        ) : visibleDates.length === 0 && !error ? (
-          <div className="text-center py-15">
-            <div className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-fav-chip-bg border border-fav-chip-border mb-2.5">
-              <Circle size={22} fill="#f5c842" stroke="#0c0c0c" strokeWidth={2} aria-hidden="true" />
-            </div>
-            <div className="text-text-dimmer text-sm">{favouriteIds.length === 0 ? "No players tracked" : "No upcoming matches found"}</div>
-            <div className="text-text-darkest text-[13px] mt-1.5">{favouriteIds.length === 0 ? "Add players in Settings to see their matches" : "Check back later for new fixtures"}</div>
-          </div>
-        ) : (
-          <>
-            {visibleDates.map(date => (
-              <div key={date} className="mb-[22px]">
-                <div className="flex items-center gap-2.5 mb-2.5">
-                  <span className={`font-bold ${date === todayKey() ? "text-base text-accent" : "text-[13px] text-text-dimmest"}`}>
-                    {fmtDayLabel(date)}
-                  </span>
-                  <div className="flex-1 h-px bg-divider" />
-                  <span className="text-[13px] text-text-section">
-                    {grouped[date].length} match{grouped[date].length !== 1 ? "es" : ""}
-                  </span>
-                </div>
-                {grouped[date]
-                  .sort((a, b) => a.startTimestamp - b.startTimestamp)
-                  .map(e => <MatchCard key={e.id} event={e} favouriteIds={favouriteIds} />)
-                }
+        {/* Rankings view */}
+        {view === "rankings" && (
+          <div className="mb-4">
+            {rankingsLoading && rankings.length === 0 ? (
+              <div className="text-center py-15">
+                <div className="w-[26px] h-[26px] border-3 border-border-dark border-t-accent rounded-full animate-spin mx-auto mb-2.5" />
+                <div className="text-[13px] text-text-muted">Loading rankings...</div>
               </div>
-            ))}
-
-            {hiddenCount > 0 && (
-              <button onClick={() => setShowAll(true)}
-                className="w-full p-2.5 border border-border rounded-lg text-text-muted text-[13px] mt-1">
-                Show {hiddenCount} more day{hiddenCount !== 1 ? "s" : ""} this month →
-              </button>
+            ) : rankings.length === 0 ? (
+              <div className="text-center py-15">
+                <div className="text-text-dimmer text-sm">No ranking data available</div>
+                <div className="text-text-darkest text-[13px] mt-1.5">Rankings are fetched hourly</div>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-1.5">
+                  {rankings.map(r => {
+                    const isFav = favouriteIds.includes(r.player_id);
+                    const movement = r.previous_ranking ? r.previous_ranking - r.ranking : 0;
+                    return (
+                      <div key={r.player_id} className={`flex items-center gap-3 py-2 px-3 rounded-lg border ${
+                        isFav
+                          ? "bg-gradient-to-br from-card-fav to-card-fav-hover border-border-fav"
+                          : "bg-card border-border-dark"
+                      }`}>
+                        <div className={`self-start text-lg font-extrabold font-mono w-8 text-right shrink-0 ${isFav ? "text-accent" : "text-text-muted"}`}>
+                          {r.ranking}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            {isFav && <Star size={13} className="text-accent fill-accent shrink-0" />}
+                            <span className={`text-sm truncate ${isFav ? "font-bold text-accent" : "font-medium text-text"}`}>{r.player_name}</span>
+                          </div>
+                          <div className="text-[13px] text-text-muted">
+                            {r.country && <span>{r.country}</span>}
+                            {r.country && r.next_win_points != null && <span> · </span>}
+                            {r.next_win_points != null && <span>Next win: {r.next_win_points.toLocaleString()} pts</span>}
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0 flex flex-col">
+                          <div>{r.points?.toLocaleString() ?? "—"}</div>
+                          <div>
+                          {movement !== 0 && (
+                            <div className={`flex justify-end items-center gap-0.5 text-[13px] font-bold ${movement > 0 ? "text-win" : "text-live"}`}>
+                              {movement > 0 ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                              <span>{Math.abs(movement)}</span>
+                            </div>
+                          )}
+                          {movement === 0 && r.previous_ranking && (
+                            <div className="text-[13px] text-text-dim font-bold">—</div>
+                          )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {rankingsHasMore && (
+                  <button
+                    onClick={() => fetchRankingsData(true)}
+                    disabled={rankingsLoading}
+                    className="w-full p-2.5 border border-border rounded-lg text-text-muted text-[13px] mt-3">
+                    {rankingsLoading ? "Loading..." : `Load more (showing ${rankings.length} of ${rankingsTotal})`}
+                  </button>
+                )}
+              </>
             )}
-          </>
+          </div>
         )}
+
+        {/* Match list */}
+        {view === "matches" && (<>
+          {/* Error */}
+          {error && (
+            <div className="px-[13px] py-2.5 bg-error-bg border border-error-border rounded-lg text-error-text text-[13px] mb-3">
+              <span className="inline-flex items-center gap-2">
+                <AlertTriangle size={16} aria-hidden="true" />
+                <span>{error}</span>
+              </span>
+            </div>
+          )}
+
+          {/* Loading */}
+          {loading ? (
+            <div className="text-center py-15">
+              <div className="w-[26px] h-[26px] border-3 border-border-dark border-t-accent rounded-full animate-spin mx-auto mb-2.5" />
+              <div className="text-[13px] text-text-muted">Loading matches...</div>
+            </div>
+          ) : visibleDates.length === 0 && !error ? (
+            <div className="text-center py-15">
+              <div className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-fav-chip-bg border border-fav-chip-border mb-2.5">
+                <Circle size={22} fill="#f5c842" stroke="#0c0c0c" strokeWidth={2} aria-hidden="true" />
+              </div>
+              <div className="text-text-dimmer text-sm">{favouriteIds.length === 0 ? "No players tracked" : "No upcoming matches found"}</div>
+              <div className="text-text-darkest text-[13px] mt-1.5">{favouriteIds.length === 0 ? "Add players in Settings to see their matches" : "Check back later for new fixtures"}</div>
+            </div>
+          ) : (
+            <>
+              {visibleDates.map(date => (
+                <div key={date} className="mb-[22px]">
+                  <div className="flex items-center gap-2.5 mb-2.5">
+                    <span className={`font-bold ${date === todayKey() ? "text-base text-accent" : "text-[13px] text-text-dimmest"}`}>
+                      {fmtDayLabel(date)}
+                    </span>
+                    <div className="flex-1 h-px bg-divider" />
+                    <span className="text-[13px] text-text-section">
+                      {grouped[date].length} match{grouped[date].length !== 1 ? "es" : ""}
+                    </span>
+                  </div>
+                  {grouped[date]
+                    .sort((a, b) => a.startTimestamp - b.startTimestamp)
+                    .map(e => <MatchCard key={e.id} event={e} favouriteIds={favouriteIds} />)
+                  }
+                </div>
+              ))}
+
+              {hiddenCount > 0 && (
+                <button onClick={() => setShowAll(true)}
+                  className="w-full p-2.5 border border-border rounded-lg text-text-muted text-[13px] mt-1">
+                  Show {hiddenCount} more day{hiddenCount !== 1 ? "s" : ""} this month →
+                </button>
+              )}
+            </>
+          )}
+        </>)}
 
         <div className="text-center mt-9 text-text-muted text-[13px]">
            <span className="inline-flex items-center gap-1">

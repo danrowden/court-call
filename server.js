@@ -206,8 +206,9 @@ async function fetchCalendar() {
       all = all.concat(result.events)
     }
 
-    // Upsert events
-    let eventCount = 0
+    // Upsert events and players in bulk to minimise round-trips.
+    // Calendar responses can contain the same event ID multiple times across days,
+    // so we first de-duplicate by ID within this batch.
     const eventsById = new Map()
     for (const e of all) {
       if (!e?.id) continue
@@ -215,68 +216,128 @@ async function fetchCalendar() {
       if (!startTs) continue
       // If the same id appears multiple times, keep the last occurrence.
       eventsById.set(e.id, { event: e, startTs })
+    }
 
+    const eventParams = []
+    const eventValuesSql = []
+    const playersMap = new Map()
+    let eventCount = 0
+
+    for (const { event: e, startTs } of eventsById.values()) {
+      const base = eventParams.length + 1
+      eventValuesSql.push(
+        `($${base},$${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9},$${base + 10},$${base + 11},$${base + 12},$${base + 13},$${base + 14},$${base + 15},$${base + 16},$${base + 17},$${base + 18},$${base + 19},$${base + 20},$${base + 21},$${base + 22},$${base + 23},EXTRACT(EPOCH FROM NOW())::INTEGER)`
+      )
+
+      eventParams.push(
+        e.id,
+        startTs,
+        e.status?.code ?? null,
+        e.status?.type ?? null,
+        e.status?.description ?? null,
+        e.homeTeam?.id ?? null,
+        e.homeTeam?.name ?? null,
+        e.homeTeam?.shortName ?? null,
+        e.homeTeam?.country?.name ?? null,
+        e.awayTeam?.id ?? null,
+        e.awayTeam?.name ?? null,
+        e.awayTeam?.shortName ?? null,
+        e.awayTeam?.country?.name ?? null,
+        e.tournament?.name ?? null,
+        e.tournament?.category?.name ?? null,
+        e.tournament?.uniqueTournament?.tennisPoints ?? null,
+        e.season?.name ?? null,
+        e.roundInfo?.round ?? null,
+        e.roundInfo?.name ?? null,
+        e.winnerCode ?? null,
+        e.groundType ?? e.tournament?.uniqueTournament?.groundType ?? null,
+        JSON.stringify(e.homeScore || {}),
+        JSON.stringify(e.awayScore || {}),
+        JSON.stringify(e),
+      )
+
+      eventCount++
+
+      // Collect unique players from home/away teams
+      for (const team of [e.homeTeam, e.awayTeam]) {
+        if (!team?.id || playersMap.has(team.id)) continue
+        playersMap.set(team.id, {
+          id: team.id,
+          name: team.name || '',
+          shortName: team.shortName || null,
           country: team.country?.name || null,
-      try {
-        await pool.query(`
-        INSERT INTO events (id, start_timestamp, status_code, status_type, status_desc,
-          home_team_id, home_team_name, home_team_short, home_country,
-          away_team_id, away_team_name, away_team_short, away_country,
-          tournament_name, category_name, tennis_points, season_name,
-          round_number, round_name, winner_code, ground_type,
-          home_score, away_score, raw_json, updated_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,
-          EXTRACT(EPOCH FROM NOW())::INTEGER)
-        ON CONFLICT (id) DO UPDATE SET
-          start_timestamp=$2, status_code=$3, status_type=$4, status_desc=$5,
-          home_team_id=$6, home_team_name=$7, home_team_short=$8, home_country=$9,
-          away_team_id=$10, away_team_name=$11, away_team_short=$12, away_country=$13,
-          tournament_name=$14, category_name=$15, tennis_points=$16, season_name=$17,
-          round_number=$18, round_name=$19, winner_code=$20, ground_type=$21,
-          home_score=$22, away_score=$23, raw_json=$24,
-          updated_at=EXTRACT(EPOCH FROM NOW())::INTEGER
-      `, [
-          e.id,
-          startTs,
-          e.status?.code ?? null,
-          e.status?.type ?? null,
-          e.status?.description ?? null,
-          e.homeTeam?.id ?? null,
-          e.homeTeam?.name ?? null,
-          e.homeTeam?.shortName ?? null,
-          e.homeTeam?.country?.name ?? null,
-          e.awayTeam?.id ?? null,
-          e.awayTeam?.name ?? null,
-          e.awayTeam?.shortName ?? null,
-          e.awayTeam?.country?.name ?? null,
-          e.tournament?.name ?? null,
-          e.tournament?.category?.name ?? null,
-          e.tournament?.uniqueTournament?.tennisPoints ?? null,
-          e.season?.name ?? null,
-          e.roundInfo?.round ?? null,
-          e.roundInfo?.name ?? null,
-          e.winnerCode ?? null,
-          e.groundType ?? e.tournament?.uniqueTournament?.groundType ?? null,
-          JSON.stringify(e.homeScore || {}),
-          JSON.stringify(e.awayScore || {}),
-          JSON.stringify(e),
-        ])
-        eventCount++
+        })
+      }
+    }
 
-        // Upsert players from home/away teams
-        for (const team of [e.homeTeam, e.awayTeam]) {
-          if (!team?.id) continue
-          await pool.query(`
-          INSERT INTO players (id, name, short_name, country, seen_at)
-          VALUES ($1, $2, $3, $4, EXTRACT(EPOCH FROM NOW())::INTEGER)
+    if (eventParams.length > 0) {
+      const dbStart = Date.now()
+      const client = await pool.connect()
+      try {
+        await client.query('BEGIN')
+
+        // Bulk upsert events
         const eventsSql = `
+          INSERT INTO events (id, start_timestamp, status_code, status_type, status_desc,
+            home_team_id, home_team_name, home_team_short, home_country,
+            away_team_id, away_team_name, away_team_short, away_country,
+            tournament_name, category_name, tennis_points, season_name,
+            round_number, round_name, winner_code, ground_type,
+            home_score, away_score, raw_json, updated_at)
+          VALUES ${eventValuesSql.join(', ')}
           ON CONFLICT (id) DO UPDATE SET
-            name=$2, short_name=$3, country=$4, seen_at=EXTRACT(EPOCH FROM NOW())::INTEGER
-        `, [team.id, team.name || '', team.shortName || null, team.country?.name || null])
+            start_timestamp = EXCLUDED.start_timestamp,
+            status_code = EXCLUDED.status_code,
+            status_type = EXCLUDED.status_type,
+            status_desc = EXCLUDED.status_desc,
+            home_team_id = EXCLUDED.home_team_id,
+            home_team_name = EXCLUDED.home_team_name,
+            home_team_short = EXCLUDED.home_team_short,
+            home_country = EXCLUDED.home_country,
+            away_team_id = EXCLUDED.away_team_id,
+            away_team_name = EXCLUDED.away_team_name,
+            away_team_short = EXCLUDED.away_team_short,
+            away_country = EXCLUDED.away_country,
+            tournament_name = EXCLUDED.tournament_name,
+            category_name = EXCLUDED.category_name,
+            tennis_points = EXCLUDED.tennis_points,
+            season_name = EXCLUDED.season_name,
+            round_number = EXCLUDED.round_number,
+            round_name = EXCLUDED.round_name,
+            winner_code = EXCLUDED.winner_code,
+            ground_type = EXCLUDED.ground_type,
+            home_score = EXCLUDED.home_score,
+            away_score = EXCLUDED.away_score,
+            raw_json = EXCLUDED.raw_json,
+            updated_at = EXTRACT(EPOCH FROM NOW())::INTEGER
+        `
+        await client.query(eventsSql, eventParams)
+
+        // Bulk upsert players if we have any
+        if (playersMap.size > 0) {
+          const playerParams = []
+          const playerValuesSql = []
+          for (const p of playersMap.values()) {
+            const base = playerParams.length + 1
+            playerValuesSql.push(
+              `($${base}, $${base + 1}, $${base + 2}, $${base + 3}, EXTRACT(EPOCH FROM NOW())::INTEGER)`
+            )
+            playerParams.push(p.id, p.name, p.shortName, p.country)
+          }
+
+          const playersSql = `
+            INSERT INTO players (id, name, short_name, country, seen_at)
             VALUES ${playerValuesSql.join(', ')}
+            ON CONFLICT (id) DO UPDATE SET
+              name = EXCLUDED.name,
+              short_name = EXCLUDED.short_name,
+              country = EXCLUDED.country,
+              seen_at = EXTRACT(EPOCH FROM NOW())::INTEGER
+          `
+          await client.query(playersSql, playerParams)
         }
-      } catch (err) {
-        console.error('Failed to upsert event or players for id', e.id, err)
+
+        await client.query('COMMIT')
 
         const dbMs = Date.now() - dbStart
         console.log(`Upserted ${eventCount} events and ${playersMap.size} players in ${dbMs}ms`)

@@ -208,12 +208,15 @@ async function fetchCalendar() {
 
     // Upsert events
     let eventCount = 0
+    const eventsById = new Map()
     for (const e of all) {
       if (!e?.id) continue
-
       const startTs = Number.isFinite(e.startTimestamp) ? Math.floor(e.startTimestamp) : null
       if (!startTs) continue
+      // If the same id appears multiple times, keep the last occurrence.
+      eventsById.set(e.id, { event: e, startTs })
 
+          country: team.country?.name || null,
       try {
         await pool.query(`
         INSERT INTO events (id, start_timestamp, status_code, status_type, status_desc,
@@ -266,12 +269,22 @@ async function fetchCalendar() {
           await pool.query(`
           INSERT INTO players (id, name, short_name, country, seen_at)
           VALUES ($1, $2, $3, $4, EXTRACT(EPOCH FROM NOW())::INTEGER)
+        const eventsSql = `
           ON CONFLICT (id) DO UPDATE SET
             name=$2, short_name=$3, country=$4, seen_at=EXTRACT(EPOCH FROM NOW())::INTEGER
         `, [team.id, team.name || '', team.shortName || null, team.country?.name || null])
+            VALUES ${playerValuesSql.join(', ')}
         }
       } catch (err) {
         console.error('Failed to upsert event or players for id', e.id, err)
+
+        const dbMs = Date.now() - dbStart
+        console.log(`Upserted ${eventCount} events and ${playersMap.size} players in ${dbMs}ms`)
+      } catch (dbErr) {
+        await client.query('ROLLBACK')
+        console.error('Failed bulk upsert for events/players:', dbErr)
+      } finally {
+        client.release()
       }
     }
 
@@ -295,36 +308,60 @@ async function fetchCalendar() {
 
 const RANKINGS_FETCH_INTERVAL = 60 * 60 * 1000 // 1 hour
 
-async function fetchRankings() {
-  if (!RAPIDAPI_KEY) return
-  console.log('Fetching ATP live rankings...')
+async function fetchRankingsForCategory(category) {
+  const label = category.toUpperCase()
+  const startedAt = Date.now()
+  console.log(`Fetching ${label} live rankings...`)
 
   try {
-    const res = await fetch(`https://${HOST}/api/tennis/rankings/atp/live`, {
+    // Add a safety timeout so we don't hang indefinitely waiting on upstream.
+    const controller = new AbortController()
+    const timeoutMs = 20_000
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+
+    const res = await fetch(`https://${HOST}/api/tennis/rankings/${category}/live`, {
       headers: { 'x-rapidapi-host': HOST, 'x-rapidapi-key': RAPIDAPI_KEY },
-    })
+      signal: controller.signal,
+    }).catch((err) => {
+      if (err.name === 'AbortError') {
+        console.warn(`${label} rankings fetch aborted after ${timeoutMs}ms`)
+      } else {
+        console.warn(`${label} rankings fetch network error:`, err?.message || String(err))
+      }
+      throw err
+    }).finally(() => clearTimeout(timeoutId))
+
+    const networkMs = Date.now() - startedAt
+    console.log(`${label} rankings response received in ${networkMs}ms with status ${res.status}`)
 
     let data = null
     try { data = await res.json() } catch { /* non-JSON */ }
 
     if (!res.ok) {
       const msg = data?.message || data?.error || `HTTP ${res.status}`
-      console.warn(`Rankings fetch failed: ${msg}`)
+      console.warn(`${label} rankings fetch failed: ${msg}`)
       return
     }
 
     if (data?.message) {
-      console.warn(`Rankings fetch error: ${data.message}`)
+      console.warn(`${label} rankings fetch error: ${data.message}`)
       return
     }
 
     const rankings = data?.rankings || data || []
     if (!Array.isArray(rankings) || rankings.length === 0) {
-      console.warn('Rankings fetch: no rankings data found')
+      console.warn(`${label} rankings fetch: no data found`)
       return
     }
 
-    let count = 0
+    console.log(`${label} rankings payload has ${rankings.length} entries; starting database upsert...`)
+
+    // Build bulk parameter arrays for players and rankings
+    const playerParams = []
+    const rankingParams = []
+    let playerValuesSql = []
+    let rankingValuesSql = []
+
     for (const entry of rankings) {
       const playerId = entry.team?.id || entry.player?.id
       if (!playerId) continue
@@ -340,35 +377,102 @@ async function fetchRankings() {
       const playerName = entry.team?.name || entry.player?.name || `Player ${playerId}`
       const playerShort = entry.team?.shortName || entry.player?.shortName || null
       const playerCountry = entry.team?.country?.name || entry.country?.name || null
-      await pool.query(`
-        INSERT INTO players (id, name, short_name, country, seen_at)
-        VALUES ($1, $2, $3, $4, EXTRACT(EPOCH FROM NOW())::INTEGER)
-        ON CONFLICT (id) DO UPDATE SET
-          short_name = COALESCE(NULLIF($3, ''), players.short_name),
-          country = COALESCE($4, players.country),
-          seen_at = EXTRACT(EPOCH FROM NOW())::INTEGER
-      `, [playerId, playerName, playerShort, playerCountry])
 
-      // Upsert into rankings table
-      await pool.query(`
-        INSERT INTO rankings (player_id, ranking, points, previous_ranking, best_ranking, next_win_points, max_points, category, fetched_at)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, 'atp', NOW())
-        ON CONFLICT (player_id, category) DO UPDATE SET
-          ranking = $2, points = $3, previous_ranking = $4, best_ranking = $5, next_win_points = $6, max_points = $7, fetched_at = NOW()
-      `, [playerId, rank, points, previousRanking, bestRanking, nextWinPoints, maxPoints])
+      // Players: (id, name, short_name, country, seen_at)
+      const pBase = playerParams.length + 1
+      playerValuesSql.push(
+        `($${pBase}, $${pBase + 1}, $${pBase + 2}, $${pBase + 3}, EXTRACT(EPOCH FROM NOW())::INTEGER)`
+      )
+      playerParams.push(playerId, playerName, playerShort, playerCountry)
 
-      // Cache rank+points on players table
-      await pool.query(`
-        UPDATE players SET ranking = $1, ranking_points = $2 WHERE id = $3
-      `, [rank, points, playerId])
-
-      count++
+      // Rankings: (player_id, ranking, points, previous_ranking, best_ranking, next_win_points, max_points, category, fetched_at)
+      const rBase = rankingParams.length + 1
+      rankingValuesSql.push(
+        `($${rBase}, $${rBase + 1}, $${rBase + 2}, $${rBase + 3}, $${rBase + 4}, $${rBase + 5}, $${rBase + 6}, $${rBase + 7}, NOW())`
+      )
+      rankingParams.push(
+        playerId,
+        rank,
+        points,
+        previousRanking,
+        bestRanking,
+        nextWinPoints,
+        maxPoints,
+        category
+      )
     }
 
-    console.log(`Stored ${count} ATP rankings`)
+    if (playerParams.length === 0) {
+      console.warn(`${label} rankings upsert: no valid player entries after filtering`)
+      return
+    }
+
+    const dbStart = Date.now()
+    const client = await pool.connect()
+    try {
+      await client.query('BEGIN')
+
+      // Bulk upsert players
+      const playersSql = `
+        INSERT INTO players (id, name, short_name, country, seen_at)
+        VALUES ${playerValuesSql.join(', ')}
+        ON CONFLICT (id) DO UPDATE SET
+          short_name = COALESCE(NULLIF(EXCLUDED.short_name, ''), players.short_name),
+          country = COALESCE(EXCLUDED.country, players.country),
+          seen_at = EXTRACT(EPOCH FROM NOW())::INTEGER
+      `
+      await client.query(playersSql, playerParams)
+
+      // Bulk upsert rankings
+      const rankingsSql = `
+        INSERT INTO rankings (player_id, ranking, points, previous_ranking, best_ranking, next_win_points, max_points, category, fetched_at)
+        VALUES ${rankingValuesSql.join(', ')}
+        ON CONFLICT (player_id, category) DO UPDATE SET
+          ranking = EXCLUDED.ranking,
+          points = EXCLUDED.points,
+          previous_ranking = EXCLUDED.previous_ranking,
+          best_ranking = EXCLUDED.best_ranking,
+          next_win_points = EXCLUDED.next_win_points,
+          max_points = EXCLUDED.max_points,
+          fetched_at = NOW()
+      `
+      await client.query(rankingsSql, rankingParams)
+
+      // Cache rank+points on players table for this category in a single statement
+      await client.query(
+        `
+        UPDATE players p
+        SET
+          ranking = r.ranking,
+          ranking_points = r.points
+        FROM rankings r
+        WHERE r.player_id = p.id
+          AND r.category = $1
+      `,
+        [category]
+      )
+
+      await client.query('COMMIT')
+    } catch (dbErr) {
+      await client.query('ROLLBACK')
+      throw dbErr
+    } finally {
+      client.release()
+    }
+
+    const dbMs = Date.now() - dbStart
+    const totalMs = Date.now() - startedAt
+    const count = rankingValuesSql.length
+    console.log(`Stored ${count} ${label} rankings in ${dbMs}ms (total ${totalMs}ms from request start)`)
   } catch (err) {
-    console.warn('Rankings fetch skipped:', err?.message || String(err))
+    console.warn(`${label} rankings fetch skipped:`, err?.message || String(err))
   }
+}
+
+async function fetchRankings() {
+  if (!RAPIDAPI_KEY) return
+  await fetchRankingsForCategory('atp')
+  await fetchRankingsForCategory('wta')
 }
 
 // ─── Auth Helpers ─────────────────────────────────────────────────────────────
@@ -565,9 +669,10 @@ app.get('/api/events', async (req, res) => {
   }
 })
 
-// Return paginated ATP rankings (top N with offset)
+// Return paginated rankings (top N with offset, filtered by category)
 app.get('/api/rankings', async (req, res) => {
   try {
+    const category = req.query.category === 'wta' ? 'wta' : 'atp'
     const limit = Math.min(Math.max(parseInt(req.query.limit) || 50, 1), 200)
     const offset = Math.max(parseInt(req.query.offset) || 0, 0)
 
@@ -577,14 +682,15 @@ app.get('/api/rankings', async (req, res) => {
              p.name AS player_name, p.country
       FROM rankings r
       JOIN players p ON p.id = r.player_id
-      WHERE r.category = 'atp'
+      WHERE r.category = $3
       ORDER BY r.ranking ASC
       LIMIT $1 OFFSET $2
-    `, [limit, offset])
+    `, [limit, offset, category])
 
     // Check if there are more rows beyond this page (same join as main query)
     const countResult = await pool.query(
-      `SELECT COUNT(*) AS total FROM rankings r JOIN players p ON p.id = r.player_id WHERE r.category = 'atp'`
+      `SELECT COUNT(*) AS total FROM rankings r JOIN players p ON p.id = r.player_id WHERE r.category = $1`,
+      [category]
     )
     const total = parseInt(countResult.rows[0].total)
 

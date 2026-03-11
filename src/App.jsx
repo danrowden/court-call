@@ -379,6 +379,7 @@ export default function CourtCall() {
   const [view, setView] = useState("matches");
 
   // Rankings state
+  const [rankingsCategory, setRankingsCategory] = useState("atp");
   const [rankings, setRankings] = useState([]);
   const [rankingsLoading, setRankingsLoading] = useState(false);
   const [rankingsHasMore, setRankingsHasMore] = useState(false);
@@ -455,11 +456,11 @@ export default function CourtCall() {
   // Fetch on mount and re-fetch when favourites change
   useEffect(() => { fetchEvents(); }, [favouriteIds.join(",")]);
 
-  const fetchRankingsData = useCallback(async (loadMore = false) => {
+  const fetchRankingsData = useCallback(async (category, loadMore = false) => {
     setRankingsLoading(true);
     try {
       const offset = loadMore ? rankings.length : 0;
-      const res = await fetch(`/api/rankings?limit=50&offset=${offset}`);
+      const res = await fetch(`/api/rankings?category=${category}&limit=50&offset=${offset}`);
       const data = await res.json();
       const rows = data.rankings || [];
       setRankings(prev => loadMore ? [...prev, ...rows] : rows);
@@ -469,12 +470,16 @@ export default function CourtCall() {
     setRankingsLoading(false);
   }, [rankings.length]);
 
-  // Fetch rankings when switching to rankings view
+  // Fetch rankings when switching to rankings view or changing category
   const prevView = useRef(view);
+  const prevCategory = useRef(rankingsCategory);
   useEffect(() => {
-    if (view === "rankings" && prevView.current !== "rankings") fetchRankingsData();
+    const viewChanged = view === "rankings" && prevView.current !== "rankings";
+    const catChanged = view === "rankings" && rankingsCategory !== prevCategory.current;
+    if (viewChanged || catChanged) fetchRankingsData(rankingsCategory);
     prevView.current = view;
-  }, [view]);
+    prevCategory.current = rankingsCategory;
+  }, [view, rankingsCategory]);
 
   const filteredEvents = events;
 
@@ -505,7 +510,7 @@ export default function CourtCall() {
           </div>
           <div className="flex gap-[7px] shrink-0">
             <button
-              onClick={() => view === "rankings" ? fetchRankingsData() : fetchEvents()}
+              onClick={() => view === "rankings" ? fetchRankingsData(rankingsCategory) : fetchEvents()}
               disabled={loading || rankingsLoading}
               title="Refresh"
               className="border border-border rounded-[7px] text-text-muted px-2.5 py-1.5 text-sm">
@@ -668,6 +673,20 @@ export default function CourtCall() {
         {/* Rankings view */}
         {view === "rankings" && (
           <div className="mb-4">
+            <div className="flex gap-1 mb-3">
+              {["atp", "wta"].map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setRankingsCategory(cat)}
+                  className={`px-3 py-1 rounded-md text-[13px] font-semibold uppercase ${
+                    rankingsCategory === cat
+                      ? "bg-settings-active-bg text-accent"
+                      : "text-text-muted"
+                  }`}>
+                  {cat}
+                </button>
+              ))}
+            </div>
             {rankingsLoading && rankings.length === 0 ? (
               <div className="text-center py-15">
                 <div className="w-[26px] h-[26px] border-3 border-border-dark border-t-accent rounded-full animate-spin mx-auto mb-2.5" />
@@ -735,7 +754,7 @@ export default function CourtCall() {
                 </div>
                 {rankingsHasMore && (
                   <button
-                    onClick={() => fetchRankingsData(true)}
+                    onClick={() => fetchRankingsData(rankingsCategory, true)}
                     disabled={rankingsLoading}
                     className="w-full p-2.5 border border-border rounded-lg text-text-muted text-[13px] mt-3">
                     {rankingsLoading ? "Loading..." : `Load more (showing ${rankings.length} of ${rankingsTotal})`}

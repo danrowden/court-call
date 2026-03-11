@@ -472,7 +472,7 @@ export default function CourtCall() {
             </h1>
           </div>
           <div className="flex gap-[7px] shrink-0">
-            <button onClick={fetchEvents} disabled={loading} title="Refresh"
+            <button onClick={() => fetchEvents()} disabled={loading} title="Refresh"
               className="border border-border rounded-[7px] text-text-muted px-2.5 py-1.5 text-sm">
               <RefreshCw size={16} aria-hidden="true" />
             </button>

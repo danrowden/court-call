@@ -734,8 +734,11 @@ export default function CourtCall() {
                           </div>
                           <div className="text-sm text-text-muted truncate">
                             {r.country && <span>{r.country}</span>}
+                            {r.national_rank != null && (
+                              <span className="text-[11px] text-text-muted ml-1 font-mono font-normal">{r.national_rank}</span>
+                            )}
                             {r.country && r.next_win_points != null && <span> · </span>}
-                            {r.next_win_points != null && <span className="text-text">Next <b>{r.next_win_points.toLocaleString()}</b> pts</span>}
+                            {r.next_win_points != null && <span className="text-text">Next win <b>{r.next_win_points.toLocaleString()}</b></span>}
                           </div>
                         </div>
                         <div className="text-right shrink-0 flex flex-col">

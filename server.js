@@ -99,6 +99,7 @@ async function initDb() {
   `)
   await pool.query(`ALTER TABLE rankings ADD COLUMN IF NOT EXISTS next_win_points INTEGER`)
   await pool.query(`ALTER TABLE rankings ADD COLUMN IF NOT EXISTS max_points INTEGER`)
+  await pool.query(`ALTER TABLE rankings ADD COLUMN IF NOT EXISTS national_rank INTEGER`)
   await pool.query(`CREATE INDEX IF NOT EXISTS idx_rankings_ranking ON rankings(ranking)`)
 
   // One-time cleanup: clear country values that are actually player names (from earlier bug where rowName was used)
@@ -422,6 +423,7 @@ async function fetchRankingsForCategory(category) {
     const rankingParams = []
     let playerValuesSql = []
     let rankingValuesSql = []
+    const countryCounts = {} // track how many players seen per country for national rank
 
     for (const entry of rankings) {
       const playerId = entry.team?.id || entry.player?.id
@@ -439,6 +441,13 @@ async function fetchRankingsForCategory(category) {
       const playerShort = entry.team?.shortName || entry.player?.shortName || null
       const playerCountry = entry.team?.country?.name || entry.country?.name || null
 
+      // Compute national rank: count how many players from this country we've seen so far + 1
+      let nationalRank = null
+      if (playerCountry) {
+        countryCounts[playerCountry] = (countryCounts[playerCountry] || 0) + 1
+        nationalRank = countryCounts[playerCountry]
+      }
+
       // Players: (id, name, short_name, country, seen_at)
       const pBase = playerParams.length + 1
       playerValuesSql.push(
@@ -446,10 +455,10 @@ async function fetchRankingsForCategory(category) {
       )
       playerParams.push(playerId, playerName, playerShort, playerCountry)
 
-      // Rankings: (player_id, ranking, points, previous_ranking, best_ranking, next_win_points, max_points, category, fetched_at)
+      // Rankings: (player_id, ranking, points, previous_ranking, best_ranking, next_win_points, max_points, category, national_rank, fetched_at)
       const rBase = rankingParams.length + 1
       rankingValuesSql.push(
-        `($${rBase}, $${rBase + 1}, $${rBase + 2}, $${rBase + 3}, $${rBase + 4}, $${rBase + 5}, $${rBase + 6}, $${rBase + 7}, NOW())`
+        `($${rBase}, $${rBase + 1}, $${rBase + 2}, $${rBase + 3}, $${rBase + 4}, $${rBase + 5}, $${rBase + 6}, $${rBase + 7}, $${rBase + 8}, NOW())`
       )
       rankingParams.push(
         playerId,
@@ -459,7 +468,8 @@ async function fetchRankingsForCategory(category) {
         bestRanking,
         nextWinPoints,
         maxPoints,
-        category
+        category,
+        nationalRank
       )
     }
 
@@ -486,7 +496,7 @@ async function fetchRankingsForCategory(category) {
 
       // Bulk upsert rankings
       const rankingsSql = `
-        INSERT INTO rankings (player_id, ranking, points, previous_ranking, best_ranking, next_win_points, max_points, category, fetched_at)
+        INSERT INTO rankings (player_id, ranking, points, previous_ranking, best_ranking, next_win_points, max_points, category, national_rank, fetched_at)
         VALUES ${rankingValuesSql.join(', ')}
         ON CONFLICT (player_id, category) DO UPDATE SET
           ranking = EXCLUDED.ranking,
@@ -495,6 +505,7 @@ async function fetchRankingsForCategory(category) {
           best_ranking = EXCLUDED.best_ranking,
           next_win_points = EXCLUDED.next_win_points,
           max_points = EXCLUDED.max_points,
+          national_rank = EXCLUDED.national_rank,
           fetched_at = NOW()
       `
       await client.query(rankingsSql, rankingParams)
@@ -756,7 +767,7 @@ app.get('/api/rankings', async (req, res) => {
 
     const { rows } = await pool.query(`
       SELECT r.player_id, r.ranking, r.points, r.previous_ranking, r.best_ranking,
-             r.next_win_points, r.category, r.fetched_at,
+             r.next_win_points, r.national_rank, r.category, r.fetched_at,
              p.name AS player_name, p.country
       FROM rankings r
       JOIN players p ON p.id = r.player_id

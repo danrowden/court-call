@@ -16,6 +16,7 @@ const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD
 const APP_URL = (process.env.APP_URL || `http://localhost:${PORT}`).replace(/\/+$/, '')
 const HOST = 'tennisapi1.p.rapidapi.com'
 const FETCH_INTERVAL = 15 * 60 * 1000 // 15 minutes
+const DAYS_TO_FETCH = process.env.DAYS_TO_FETCH || 4
 
 // ─── Config & Database ───────────────────────────────────────────────────────
 
@@ -192,7 +193,7 @@ async function fetchCalendar() {
 
     // Today + next 3 days (4 days total)
     let all = []
-    for (let i = 0; i <= 3; i++) {
+    for (let i = 0; i <= DAYS_TO_FETCH; i++) {
       const d = new Date(start)
       d.setDate(start.getDate() + i)
       const result = await fetchEventsForDate(d)

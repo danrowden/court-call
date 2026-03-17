@@ -713,8 +713,19 @@ export default function CourtCall() {
                           ? "bg-gradient-to-br from-card-fav to-card-fav-hover border-border-fav"
                           : "bg-card border-border-dark"
                       }`}>
-                        <div className={`self-start text-lg font-extrabold font-mono w-8 text-right shrink-0 ${isFav ? "text-accent" : "text-text-muted"}`}>
-                          {r.ranking}
+                        <div className={`self-start  w-8 text-right shrink-0 ${isFav ? "text-accent" : "text-text-muted"}`}>
+                          <div className="text-lg font-extrabold font-mono">{r.ranking}</div>
+                          <div className="-mt-1">
+                          {movement !== 0 && (
+                            <div className={`flex justify-end items-center gap-0.5 text-xs ${movement > 0 ? "text-win" : "text-live"}`}>
+                              {movement > 0 ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                              <span>{Math.abs(movement)}</span>
+                            </div>
+                          )}
+                          {movement === 0 && r.previous_ranking && (
+                            <div className="text-xs text-text-dim font-bold">—</div>
+                          )}
+                          </div>
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
@@ -737,23 +748,11 @@ export default function CourtCall() {
                             {r.national_rank != null && (
                               <span className="text-[11px] text-text-muted ml-1 font-mono font-normal">{r.national_rank}</span>
                             )}
-                            {r.country && r.next_win_points != null && <span> · </span>}
-                            {r.next_win_points != null && <span className="text-text">Next win <b>{r.next_win_points.toLocaleString()}</b></span>}
                           </div>
                         </div>
                         <div className="text-right shrink-0 flex flex-col">
                           <div>{r.points?.toLocaleString() ?? "—"}</div>
-                          <div>
-                          {movement !== 0 && (
-                            <div className={`flex justify-end items-center gap-0.5 text-[13px] font-bold ${movement > 0 ? "text-win" : "text-live"}`}>
-                              {movement > 0 ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                              <span>{Math.abs(movement)}</span>
-                            </div>
-                          )}
-                          {movement === 0 && r.previous_ranking && (
-                            <div className="text-[13px] text-text-dim font-bold">—</div>
-                          )}
-                          </div>
+                          {r.next_win_points != null && <span className="text-text-muted text-sm">Next win {r.next_win_points.toLocaleString()}</span>}
                         </div>
                       </div>
                     );

@@ -17,6 +17,7 @@ const APP_URL = (process.env.APP_URL || `http://localhost:${PORT}`).replace(/\/+
 const HOST = 'tennisapi1.p.rapidapi.com'
 const FETCH_INTERVAL = 15 * 60 * 1000 // 15 minutes
 const DAYS_TO_FETCH = process.env.DAYS_TO_FETCH || 4
+const DAYS_BACK_TO_FETCH = parseInt(process.env.DAYS_BACK_TO_FETCH || '2', 10)
 
 // ─── Config & Database ───────────────────────────────────────────────────────
 
@@ -31,6 +32,10 @@ const rawRetentionDays = parseInt(process.env.EVENT_RETENTION_DAYS || '7', 10)
 const EVENT_RETENTION_DAYS = Number.isFinite(rawRetentionDays) && rawRetentionDays > 0
   ? Math.min(rawRetentionDays, 90)
   : 7
+
+const SAFE_DAYS_BACK_TO_FETCH = Number.isFinite(DAYS_BACK_TO_FETCH) && DAYS_BACK_TO_FETCH >= 0
+  ? Math.min(DAYS_BACK_TO_FETCH, EVENT_RETENTION_DAYS)
+  : 2
 
 const pool = new pg.Pool({
   connectionString: DATABASE_URL,
@@ -190,10 +195,11 @@ async function fetchCalendar() {
 
     const now = new Date()
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    start.setDate(start.getDate() - SAFE_DAYS_BACK_TO_FETCH)
 
-    // Today + next 3 days (4 days total)
+    // Fetch from X days ago through next N days
     let all = []
-    for (let i = 0; i <= DAYS_TO_FETCH; i++) {
+    for (let i = 0; i <= (SAFE_DAYS_BACK_TO_FETCH + Number(DAYS_TO_FETCH)); i++) {
       const d = new Date(start)
       d.setDate(start.getDate() + i)
       const result = await fetchEventsForDate(d)
@@ -712,7 +718,7 @@ app.put('/api/favourites', authMiddleware, async (req, res) => {
 // Return cached events, filtered by player IDs if provided
 app.get('/api/events', async (req, res) => {
   try {
-    const cutoff = Math.floor(Date.now() / 1000) - 7200 // include matches from last 2 hours
+    const cutoff = Math.floor(Date.now() / 1000) - (2 * 86400) // include matches from last 2 days (+ always include live)
 
     // Parse ?players=123,456,789 — required, returns empty without it
     const playerIds = (req.query.players || '')
@@ -732,7 +738,7 @@ app.get('/api/events', async (req, res) => {
        FROM events e
        LEFT JOIN players ph ON ph.id = e.home_team_id
        LEFT JOIN players pa ON pa.id = e.away_team_id
-       WHERE e.start_timestamp > $1
+       WHERE (e.start_timestamp > $1 OR e.status_type = 'inprogress')
          AND (e.home_team_id = ANY($2) OR e.away_team_id = ANY($2))
        ORDER BY e.start_timestamp ASC`,
       [cutoff, playerIds]

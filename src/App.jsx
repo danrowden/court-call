@@ -158,23 +158,33 @@ function MatchCard({ event, favouriteIds }) {
   const winnerHome = event.winnerCode === 1;
   const winnerAway = event.winnerCode === 2;
 
-  const cardBg = isFav
-    ? "bg-gradient-to-br from-card-fav to-card-fav-hover"
-    : "bg-gradient-to-br from-card to-card-hover";
-  const borderColor = isLive ? "border-live" : isFav ? "border-border-fav" : "border-border";
+  const cardBg = isDone
+    ? "bg-card"
+    : isFav
+      ? "bg-gradient-to-br from-card-fav to-card-fav-hover"
+      : "bg-gradient-to-br from-card to-card-hover";
+  const borderColor = isLive
+    ? "border-live"
+    : isDone
+      ? "border-border-dark"
+      : isFav
+        ? "border-border-fav"
+        : "border-border";
 
   return (
-    <div className={`${cardBg} ${borderColor} border rounded-[10px] p-3 sm:p-4 mb-2 relative overflow-hidden transition-transform duration-150 ${isDone ? "opacity-55" : "opacity-100"}`}>
+    <div className={`${cardBg} ${borderColor} border rounded-[10px] p-3 sm:p-4 mb-2 relative overflow-hidden transition-transform duration-150`}>
       {isLive && <div className="absolute top-0 left-0 right-0 h-0.5 bg-live animate-livepulse" />}
 
       <div className="flex justify-between items-center gap-4">
         {/* Players */}
         <div className="flex-1 min-w-0">
-          {[[p1, p1Fav, winnerHome, p1Rank], [p2, p2Fav, winnerAway, p2Rank]].map(([name, fav, winner, rank], i) => (
+          {[[p1, p1Fav, winnerHome, p1Rank], [p2, p2Fav, winnerAway, p2Rank]].map(([name, fav, winner, rank], i) => {
+            const favLost = Boolean(isDone && fav && !winner);
+            return (
             <div key={i} className={`flex items-baseline gap-1.5 ${i === 0 ? "mb-[5px]" : ""}`}>
               {fav ? <Star aria-label="tracked" className="w-3.5 h-3.5 text-accent fill-accent shrink-0 translate-y-px" /> : null}
               <span className={`text-sm font-mono whitespace-nowrap overflow-hidden text-ellipsis ${
-                fav ? "font-bold text-accent" :
+                fav ? (favLost ? "font-bold text-accent opacity-55" : "font-bold text-accent") :
                 winner ? "font-semibold text-text" :
                 isDone ? "font-normal text-text-dim" :
                 "font-normal text-[#ccc]"
@@ -190,7 +200,8 @@ function MatchCard({ event, favouriteIds }) {
                 )}
               </span>
             </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Right side: time or score */}
@@ -219,6 +230,7 @@ function MatchCard({ event, favouriteIds }) {
         <span className="inline-flex items-center"><SurfaceIcon groundType={ground} size={14} /></span>
         <span className="text-[13px] text-text-muted flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
           {event.tournament?.name}{event.roundInfo?.name ? ` · ${event.roundInfo.name}` : ""}
+          {isDone ? ` · ${localTime}` : ""}
         </span>
         <Badge event={event} />
       </div>
@@ -494,7 +506,17 @@ export default function CourtCall() {
 
   const filteredEvents = events;
 
-  const grouped = filteredEvents.reduce((acc, e) => {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const upcomingCutoffSec = nowSec - 7200; // hide finished results older than 2 hours in Upcoming
+
+  const upcomingEvents = filteredEvents.filter((e) => {
+    const isFinished = e.status?.type === "finished";
+    if (!isFinished) return true;
+    const startTs = Number.isFinite(e.startTimestamp) ? e.startTimestamp : 0;
+    return startTs >= upcomingCutoffSec;
+  });
+
+  const grouped = upcomingEvents.reduce((acc, e) => {
     const d = tsToDateKey(e.startTimestamp);
     if (!acc[d]) acc[d] = [];
     acc[d].push(e);

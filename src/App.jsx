@@ -62,6 +62,9 @@ function todayKey() {
 function tomorrowKey() {
   return new Date(Date.now() + 86400000).toLocaleDateString("en-CA", { timeZone: USER_TZ });
 }
+function twoDaysAgoKey() {
+  return new Date(Date.now() - 2 * 86400000).toLocaleDateString("en-CA", { timeZone: USER_TZ });
+}
 function fmtDayLabel(dateStr) {
   if (dateStr === todayKey()) return "Today";
   if (dateStr === tomorrowKey()) return "Tomorrow";
@@ -383,6 +386,9 @@ export default function CourtCall() {
   // View toggle: "matches" or "rankings"
   const [view, setView] = useState("matches");
 
+  // Matches sub-view: "upcoming" or "results"
+  const [matchesMode, setMatchesMode] = useState("upcoming");
+
   // Rankings state
   const [rankingsCategory, setRankingsCategory] = useState("atp");
   const [rankings, setRankings] = useState([]);
@@ -499,6 +505,20 @@ export default function CourtCall() {
   const visibleDates = showAll ? allDates : allDates.filter(d => d <= cutoffKey);
   const hiddenCount = allDates.length - visibleDates.length;
 
+  const resultsStartKey = twoDaysAgoKey();
+  const resultEvents = filteredEvents.filter((e) => {
+    if (e.status?.type !== "finished") return false;
+    const dateKey = tsToDateKey(e.startTimestamp);
+    return dateKey >= resultsStartKey && dateKey <= todayKey();
+  });
+  const resultGrouped = resultEvents.reduce((acc, e) => {
+    const d = tsToDateKey(e.startTimestamp);
+    if (!acc[d]) acc[d] = [];
+    acc[d].push(e);
+    return acc;
+  }, {});
+  const resultDates = Object.keys(resultGrouped).sort().reverse();
+
   return (
     <div className="min-h-screen bg-bg text-text font-sans p-4">
       <div className="max-w-[580px] mx-auto">
@@ -536,27 +556,29 @@ export default function CourtCall() {
         </div>
 
         {/* View toggle + meta */}
-        <div className="flex items-center justify-between mt-1 mb-4">
-          <div className="flex bg-card border border-border rounded-lg overflow-hidden">
-            <button
-              onClick={() => setView("matches")}
-              className={`px-3 py-1 text-[13px] font-semibold ${
-                view === "matches" ? "bg-settings-active-bg text-accent" : "text-text-muted"
-              }`}>
-              Matches
-            </button>
-            <button
-              onClick={() => setView("rankings")}
-              className={`px-3 py-1 text-[13px] font-semibold ${
-                view === "rankings" ? "bg-settings-active-bg text-accent" : "text-text-muted"
-              }`}>
-              Rankings
-            </button>
+        {!showSettings && (
+          <div className="flex items-center justify-between mt-1 mb-4">
+            <div className="flex bg-card border border-border rounded-lg overflow-hidden">
+              <button
+                onClick={() => setView("matches")}
+                className={`px-3 py-1 text-[13px] font-semibold ${
+                  view === "matches" ? "bg-settings-active-bg text-accent" : "text-text-muted"
+                }`}>
+                Matches
+              </button>
+              <button
+                onClick={() => setView("rankings")}
+                className={`px-3 py-1 text-[13px] font-semibold ${
+                  view === "rankings" ? "bg-settings-active-bg text-accent" : "text-text-muted"
+                }`}>
+                Rankings
+              </button>
+            </div>
+            <p className="text-sm text-text-muted flex items-center gap-1">
+              {/* {USER_TZ_SHORT} · {favourites.length} <Star aria-label="tracked" className="inline w-3.5 h-3.5 text-accent fill-accent shrink-0 translate-y-px" /> */}
+            </p>
           </div>
-          <p className="text-sm text-text-muted flex items-center gap-1">
-            {/* {USER_TZ_SHORT} · {favourites.length} <Star aria-label="tracked" className="inline w-3.5 h-3.5 text-accent fill-accent shrink-0 translate-y-px" /> */}
-          </p>
-        </div>
+        )}
 
         {/* Settings */}
         {showSettings && (
@@ -674,6 +696,7 @@ export default function CourtCall() {
           </div>
         )}
 
+        {!showSettings && (<>
         {/* Rankings view */}
         {view === "rankings" && (
           <div className="mb-4">
@@ -773,6 +796,24 @@ export default function CourtCall() {
 
         {/* Match list */}
         {view === "matches" && (<>
+          <div className="flex gap-1 mb-3">
+            {[
+              { id: "upcoming", label: "Upcoming" },
+              { id: "results", label: "Results" },
+            ].map(opt => (
+              <button
+                key={opt.id}
+                onClick={() => setMatchesMode(opt.id)}
+                className={`px-3 py-1 rounded-md text-[13px] font-semibold uppercase ${
+                  matchesMode === opt.id
+                    ? "bg-settings-active-bg text-accent"
+                    : "text-text-muted"
+                }`}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
           {/* Error */}
           {error && (
             <div className="px-[13px] py-2.5 bg-error-bg border border-error-border rounded-lg text-error-text text-[13px] mb-3">
@@ -787,8 +828,38 @@ export default function CourtCall() {
           {loading ? (
             <div className="text-center py-15">
               <div className="w-[26px] h-[26px] border-3 border-border-dark border-t-accent rounded-full animate-spin mx-auto mb-2.5" />
-              <div className="text-[13px] text-text-muted">Loading matches...</div>
+              <div className="text-[13px] text-text-muted">{matchesMode === "results" ? "Loading results..." : "Loading matches..."}</div>
             </div>
+          ) : matchesMode === "results" ? (
+            resultDates.length === 0 && !error ? (
+              <div className="text-center py-15">
+                <div className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-fav-chip-bg border border-fav-chip-border mb-2.5">
+                  <Circle size={22} fill="#f5c842" stroke="#0c0c0c" strokeWidth={2} aria-hidden="true" />
+                </div>
+                <div className="text-text-dimmer text-sm">{favouriteIds.length === 0 ? "No players tracked" : "No recent results found"}</div>
+                <div className="text-text-darkest text-[13px] mt-1.5">{favouriteIds.length === 0 ? "Add players in Settings to see their results" : ""}</div>
+              </div>
+            ) : (
+              <>
+                {resultDates.map(date => (
+                  <div key={date} className="mb-[22px]">
+                    <div className="flex items-center gap-2.5 mb-2.5">
+                      <span className={`font-bold ${date === todayKey() ? "text-base" : "text-text-muted"}`}>
+                        {fmtDayLabel(date)}
+                      </span>
+                      <div className="flex-1 h-px bg-divider" />
+                      <span className="text-sm text-text-dim">
+                        {resultGrouped[date].length} result{resultGrouped[date].length !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    {resultGrouped[date]
+                      .sort((a, b) => b.startTimestamp - a.startTimestamp)
+                      .map(e => <MatchCard key={e.id} event={e} favouriteIds={favouriteIds} />)
+                    }
+                  </div>
+                ))}
+              </>
+            )
           ) : visibleDates.length === 0 && !error ? (
             <div className="text-center py-15">
               <div className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-fav-chip-bg border border-fav-chip-border mb-2.5">
@@ -826,16 +897,21 @@ export default function CourtCall() {
             </>
           )}
         </>)}
+        </>)}
 
-        <div className="text-center mt-9 text-text-muted text-[13px]">
-           <span className="inline-flex items-center gap-1">
-             <Globe size={15} stroke="#555" aria-hidden="true" />
-             {USER_TZ}
-           </span>
-        </div>
-        <div className="text-center mt-2 text-text-muted text-[13px]">
-          Tennis player tracker · By <a href="https://x.com/dr" target="_blank" rel="noopener noreferrer">@dr</a>
-        </div>
+        {!showSettings && (
+          <>
+            <div className="text-center mt-9 text-text-muted text-[13px]">
+              <span className="inline-flex items-center gap-1">
+                <Globe size={15} stroke="#555" aria-hidden="true" />
+                {USER_TZ}
+              </span>
+            </div>
+            <div className="text-center mt-2 text-text-muted text-[13px]">
+              Tennis player tracker · By <a href="https://x.com/dr" target="_blank" rel="noopener noreferrer">@dr</a>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

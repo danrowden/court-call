@@ -739,6 +739,7 @@ app.get('/api/events', async (req, res) => {
        LEFT JOIN players ph ON ph.id = e.home_team_id
        LEFT JOIN players pa ON pa.id = e.away_team_id
        WHERE (e.start_timestamp > $1 OR e.status_type = 'inprogress')
+         AND e.status_type != 'canceled'
          AND (e.home_team_id = ANY($2) OR e.away_team_id = ANY($2))
        ORDER BY e.start_timestamp ASC`,
       [cutoff, playerIds]
